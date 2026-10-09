@@ -1,0 +1,70 @@
+---
+import Pagina from '../layouts/Pagina.astro';
+import Icone from '../components/Icone.astro';
+import { site } from '../data/site';
+---
+
+<Pagina titulo="Contactos" intro="Estamos disponíveis para esclarecer dúvidas sobre cursos, inscrições, parcerias e serviços da escola.">
+  <section class="seccao">
+    <div class="contentor duas-colunas">
+      <div>
+        <h2>Envia-nos uma mensagem</h2>
+        <form class="formulario" data-formulario="contacto" data-assunto="Contacto pelo sítio" data-email={site.email}>
+          <div class="campo">
+            <label for="c-nome">Nome <abbr title="obrigatório">*</abbr></label>
+            <input id="c-nome" name="nome" autocomplete="name" required />
+          </div>
+          <div class="campo">
+            <label for="c-telefone">Telefone de contacto</label>
+            <input id="c-telefone" name="telefone" type="tel" autocomplete="tel" />
+          </div>
+          <div class="campo">
+            <label for="c-email">Email <abbr title="obrigatório">*</abbr></label>
+            <input id="c-email" name="email" type="email" autocomplete="email" required />
+          </div>
+          <div class="campo">
+            <label for="c-entidade">Empresa / Instituição <abbr title="obrigatório">*</abbr></label>
+            <input id="c-entidade" name="entidade" autocomplete="organization" required />
+          </div>
+          <div class="campo campo--largo">
+            <label for="c-assunto">Assunto <abbr title="obrigatório">*</abbr></label>
+            <input id="c-assunto" name="assunto" required />
+          </div>
+          <div class="campo campo--largo">
+            <label for="c-mensagem">Descrição <abbr title="obrigatório">*</abbr></label>
+            <textarea id="c-mensagem" name="descricao" required></textarea>
+          </div>
+          <label class="consentimento campo--largo">
+            <input type="checkbox" name="consentimento" value="sim" required />
+            <span>Autorizo o tratamento destes dados para resposta ao meu pedido, nos termos da <a href="/privacidade/">política de privacidade</a>.</span>
+          </label>
+          <button type="submit" class="botao botao--escuro">Enviar <Icone nome="seta" tamanho={18} /></button>
+          <p class="formulario__nota">Os campos assinalados com * são obrigatórios.</p>
+          <p role="status" aria-live="polite"></p>
+        </form>
+      </div>
+
+      <aside class="painel">
+        <h3>{site.entidade}</h3>
+        <dl>
+          <dt>Morada</dt>
+          <dd>{site.morada.map((l) => <>{l}<br /></>)}</dd>
+          <dt>Telefone</dt>
+          <dd><a href={`tel:${site.telefone.replace(/\s/g, '')}`}>{site.telefone}</a></dd>
+          <dt>Email</dt>
+          <dd><a href={`mailto:${site.email}`}>{site.email}</a></dd>
+        </dl>
+        <p style="margin:1.25rem 0 0">
+          <a href={site.mapa} class="ligacao-seta" rel="noopener">Ver no Google Maps <Icone nome="externo" tamanho={16} /></a>
+        </p>
+      </aside>
+    </div>
+  </section>
+</Pagina>
+
+<script>
+  // Permite ligações do tipo /contactos/?assunto=Parcerias
+  const assunto = new URLSearchParams(location.search).get('assunto');
+  const campo = document.querySelector<HTMLInputElement>('#c-assunto');
+  if (assunto && campo) campo.value = assunto;
+</script>

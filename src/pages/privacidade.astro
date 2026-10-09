@@ -1,0 +1,28 @@
+---
+import Pagina from '../layouts/Pagina.astro';
+import { site } from '../data/site';
+---
+
+<Pagina titulo="Política de privacidade" intro="Como este sítio trata os dados de quem o visita.">
+  <section class="seccao">
+    <div class="contentor prosa">
+      <h2>Neste sítio</h2>
+      <ul>
+        <li>Não são usados cookies de publicidade nem ferramentas de rastreio de terceiros.</li>
+        <li>Os tipos de letra e restantes recursos são servidos pelo próprio sítio, sem pedidos a serviços externos.</li>
+        <li>Os dados enviados nos formulários de contacto e de pré-inscrição são usados apenas para responder ao pedido.</li>
+      </ul>
+
+      <h2>Política de privacidade da escola</h2>
+      <p>
+        O tratamento de dados pessoais pela {site.entidade} rege-se pela política de privacidade da instituição, disponível nos
+        <a href="/escola/documentos/">documentos institucionais</a>.
+      </p>
+
+      <h2>Contacto</h2>
+      <p>
+        Para exercer os seus direitos de acesso, retificação ou apagamento, escreva para <a href={`mailto:${site.email}`}>{site.email}</a>.
+      </p>
+    </div>
+  </section>
+</Pagina>

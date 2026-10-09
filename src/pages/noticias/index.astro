@@ -1,0 +1,68 @@
+---
+import { getCollection } from 'astro:content';
+import Pagina from '../../layouts/Pagina.astro';
+import CartaoNoticia from '../../components/CartaoNoticia.astro';
+
+const noticias = (await getCollection('noticias')).sort((a, b) => +b.data.data - +a.data.data);
+const categorias = [...new Set(noticias.map((n) => n.data.categoria))];
+---
+
+<Pagina titulo="Notícias" intro="A vida da escola, o emprego e a formação, e os projetos no país e na Europa.">
+  <section class="seccao">
+    <div class="contentor">
+      <div class="filtros" role="group" aria-label="Filtrar por categoria">
+        <button type="button" class="filtro" aria-pressed="true" data-categoria="">Todas</button>
+        {categorias.map((c) => <button type="button" class="filtro" aria-pressed="false" data-categoria={c}>{c}</button>)}
+      </div>
+      <div class="grelha grelha--3">
+        {
+          noticias.map((n) => (
+            <div data-categoria={n.data.categoria} style="display:contents">
+              <CartaoNoticia noticia={n} />
+            </div>
+          ))
+        }
+      </div>
+    </div>
+  </section>
+</Pagina>
+
+<script>
+  const filtros = document.querySelectorAll<HTMLButtonElement>('.filtro');
+  const itens = document.querySelectorAll<HTMLElement>('.grelha > [data-categoria]');
+  filtros.forEach((f) =>
+    f.addEventListener('click', () => {
+      filtros.forEach((x) => x.setAttribute('aria-pressed', String(x === f)));
+      const c = f.dataset.categoria;
+      itens.forEach((i) => (i.hidden = !!c && i.dataset.categoria !== c));
+    }),
+  );
+</script>
+
+<style>
+  .filtros {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 2rem;
+  }
+  .filtro {
+    padding: 0.5rem 1rem;
+    border: 1.5px solid var(--linha);
+    border-radius: 999px;
+    background: #fff;
+    font: inherit;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--petroleo);
+    cursor: pointer;
+  }
+  .filtro[aria-pressed='true'] {
+    background: var(--petroleo);
+    border-color: var(--petroleo);
+    color: #fff;
+  }
+  [hidden] {
+    display: none !important;
+  }
+</style>

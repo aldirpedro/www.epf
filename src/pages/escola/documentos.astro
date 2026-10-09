@@ -1,0 +1,49 @@
+---
+import Pagina from '../../layouts/Pagina.astro';
+import ListaDocumentos from '../../components/ListaDocumentos.astro';
+import Icone from '../../components/Icone.astro';
+import { institucionais, organizacaoEscolar } from '../../data/documentos';
+---
+
+<Pagina
+  titulo="Documentos institucionais"
+  intro="Estatutos, regulamentos, projeto educativo e organização do ano letivo, num só lugar."
+  migalhas={[{ nome: 'A Escola', url: '/escola/' }]}
+>
+  <section class="seccao">
+    <div class="contentor duas-colunas">
+      <div>
+        <h2>Instituição</h2>
+        <ListaDocumentos documentos={institucionais} />
+      </div>
+      <div id="organizacao">
+        <h2>Organização escolar</h2>
+        <div class="painel">
+          <span class="etiqueta">{organizacaoEscolar.anoLetivo}</span>
+          <ul>
+            {organizacaoEscolar.documentos.map((d) => <li>{d}</li>)}
+          </ul>
+          <a href={organizacaoEscolar.url} class="ligacao-seta" rel="noopener">
+            Consultar documentos e anos anteriores <Icone nome="externo" tamanho={16} />
+          </a>
+        </div>
+        <p class="nota">Procuras os documentos da qualidade? Estão na página <a href="/qualidade/">Qualidade · EQAVET</a>.</p>
+      </div>
+    </div>
+  </section>
+</Pagina>
+
+<style>
+  .painel ul {
+    margin: 1rem 0 1.25rem;
+    padding-left: 1.1rem;
+  }
+  .painel li {
+    margin-bottom: 0.3rem;
+  }
+  .nota {
+    margin-top: 1.25rem;
+    font-size: 0.92rem;
+    color: var(--texto-suave);
+  }
+</style>

@@ -1,0 +1,27 @@
+---
+import Base from './Base.astro';
+
+interface Props {
+  titulo: string;
+  descricao?: string;
+  intro?: string;
+  migalhas?: { nome: string; url: string }[];
+}
+const { titulo, descricao, intro, migalhas = [] } = Astro.props;
+---
+
+<Base titulo={titulo} descricao={descricao ?? intro}>
+  <div class="topo-pagina">
+    <div class="contentor">
+      <ol class="migalhas" aria-label="Localização">
+        <li><a href="/">Início</a></li>
+        {migalhas.map((m) => <li><a href={m.url}>{m.nome}</a></li>)}
+        <li aria-current="page">{titulo}</li>
+      </ol>
+      <slot name="antes-titulo" />
+      <h1>{titulo}</h1>
+      {intro && <p>{intro}</p>}
+    </div>
+  </div>
+  <slot />
+</Base>

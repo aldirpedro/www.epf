@@ -1,0 +1,62 @@
+---
+import '../styles/global.css';
+import { site } from '../data/site';
+import Cabecalho from '../components/Cabecalho.astro';
+import Rodape from '../components/Rodape.astro';
+
+interface Props {
+  titulo?: string;
+  descricao?: string;
+}
+const { titulo, descricao = site.descricao } = Astro.props;
+const tituloCompleto = titulo ? `${titulo} · ${site.sigla}` : `${site.nome} · ${site.sigla}`;
+const canonico = new URL(Astro.url.pathname, Astro.site);
+
+const organizacao = {
+  '@context': 'https://schema.org',
+  '@type': 'School',
+  name: site.nome,
+  url: Astro.site?.href,
+  email: site.email,
+  telephone: site.telefone,
+  foundingDate: String(site.fundacao),
+  address: {
+    '@type': 'PostalAddress',
+    streetAddress: site.morada[0],
+    postalCode: '6230-370',
+    addressLocality: 'Fundão',
+    addressCountry: 'PT',
+  },
+};
+---
+
+<!doctype html>
+<html lang="pt-PT">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{tituloCompleto}</title>
+    <meta name="description" content={descricao} />
+    <link rel="canonical" href={canonico} />
+    <link rel="icon" href="/favicon.png" type="image/png" />
+    <meta name="theme-color" content="#16312f" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content={site.nome} />
+    <meta property="og:title" content={tituloCompleto} />
+    <meta property="og:description" content={descricao} />
+    <meta property="og:url" content={canonico} />
+    <meta property="og:locale" content="pt_PT" />
+    <script type="application/ld+json" set:html={JSON.stringify(organizacao)} />
+  </head>
+  <body>
+    <a href="#conteudo" class="saltar">Saltar para o conteúdo</a>
+    <Cabecalho />
+    <main id="conteudo">
+      <slot />
+    </main>
+    <Rodape />
+    <script>
+      import '../scripts/formularios';
+    </script>
+  </body>
+</html>

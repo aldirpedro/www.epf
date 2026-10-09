@@ -1,0 +1,42 @@
+---
+import { Image } from 'astro:assets';
+import marca from '../assets/logo-epf.png';
+
+interface Props {
+  claro?: boolean;
+}
+const { claro = false } = Astro.props;
+---
+
+<span class:list={['logo', { 'logo--claro': claro }]}>
+  <Image src={marca} alt="" width={44} height={44} densities={[1, 2]} loading="eager" />
+  <span class="logo__texto">
+    <span>Escola</span>
+    <span>Profissional</span>
+    <span>do Fundão</span>
+  </span>
+</span>
+
+<style>
+  .logo {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.65rem;
+    color: var(--verde-escuro);
+  }
+  .logo--claro {
+    color: #fff;
+  }
+  .logo img {
+    flex: none;
+    border-radius: 4px;
+  }
+  .logo__texto {
+    display: flex;
+    flex-direction: column;
+    font-family: var(--fonte-titulo);
+    font-size: 0.95rem;
+    font-weight: 600;
+    line-height: 1.02;
+  }
+</style>

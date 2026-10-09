@@ -1,0 +1,93 @@
+---
+import Pagina from '../layouts/Pagina.astro';
+import Icone from '../components/Icone.astro';
+
+const testemunhos = [
+  { texto: 'Quando terminei o curso de Técnico de Comércio, tive muitas ofertas de emprego, antes do primeiro contrato.', nome: 'Cristina', curso: 'Técnico de Comércio' },
+  { texto: 'Antes de concluir o curso de Técnico de Restaurante/Bar já tinha propostas de emprego aliciantes.', nome: 'José Cunha', curso: 'Técnico de Restaurante/Bar' },
+];
+---
+
+<Pagina
+  titulo="Alumni e parceiros"
+  intro="A EPF não isola a sua atividade do meio em que está inserida: antigos alunos, empresas e instituições fazem parte da escola."
+>
+  <section id="alumni" class="seccao">
+    <div class="contentor">
+      <div class="cabecalho-seccao">
+        <div>
+          <span class="sobretitulo">EPF Alumni Network</span>
+          <h2>Uma rede de antigos alunos</h2>
+          <p>
+            Os alunos da EPF têm assumido um papel determinante na economia local. A EPF Alumni Network proporciona o acesso a uma
+            rede de contactos entre ex-alunos e fomenta uma forte ligação com a escola.
+          </p>
+        </div>
+      </div>
+      <div class="grelha grelha--2">
+        {testemunhos.map((t) => (
+          <figure class="cartao testemunho">
+            <blockquote>«{t.texto}»</blockquote>
+            <figcaption><strong>{t.nome}</strong> · {t.curso}</figcaption>
+          </figure>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <section id="parceiros" class="seccao seccao--suave">
+    <div class="contentor duas-colunas">
+      <div>
+        <span class="sobretitulo">Parcerias empresariais</span>
+        <h2>Formar com quem emprega</h2>
+        <p class="lead">
+          Na sequência da sua missão e tendo em consideração as exigências do mercado, importa que a EPF seja capaz de contribuir
+          para o desenvolvimento da sociedade, em particular da região em que está inserida.
+        </p>
+        <p>As empresas parceiras acolhem alunos em formação em contexto de trabalho e participam na definição da oferta formativa.</p>
+      </div>
+      <div class="painel">
+        <h3>Quer ser parceiro da EPF?</h3>
+        <p>Receba estagiários, divulgue ofertas de emprego ou colabore em projetos com os nossos cursos.</p>
+        <a href="/contactos/?assunto=Parcerias" class="botao botao--escuro">Contactar a escola <Icone nome="seta" tamanho={18} /></a>
+      </div>
+    </div>
+  </section>
+
+  <section id="recrutamento" class="seccao">
+    <div class="contentor duas-colunas">
+      <div>
+        <span class="sobretitulo">Recrutamento</span>
+        <h2>Emprego e estágios profissionais</h2>
+        <p class="lead">
+          A colocação dos recém-formados no mercado de trabalho é uma das prioridades da EPF. Alunos e empresas têm à sua disposição
+          um programa que facilita a procura e a oferta de oportunidades de emprego e de estágios profissionais.
+        </p>
+        <p>Para aceder ao programa basta estar registado. Se ainda não estás registado, contacta os serviços de secretaria.</p>
+      </div>
+      <div class="painel">
+        <h3>Tem uma oferta para os nossos diplomados?</h3>
+        <p>Envie-nos a descrição da função e o perfil pretendido. Encaminhamos para os alunos e antigos alunos da área.</p>
+        <a href="/contactos/?assunto=Recrutamento" class="botao botao--escuro">Enviar oferta <Icone nome="seta" tamanho={18} /></a>
+      </div>
+    </div>
+  </section>
+</Pagina>
+
+<style>
+  .testemunho {
+    margin: 0;
+  }
+  blockquote {
+    margin: 0 0 1rem;
+    font-family: var(--fonte-titulo);
+    font-size: 1.3rem;
+    font-weight: 600;
+    line-height: 1.35;
+    color: var(--petroleo);
+  }
+  figcaption {
+    font-size: 0.9rem;
+    color: var(--texto-suave);
+  }
+</style>

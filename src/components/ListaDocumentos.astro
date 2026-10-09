@@ -1,0 +1,26 @@
+---
+import type { Documento } from '../data/documentos';
+import Icone from './Icone.astro';
+
+interface Props {
+  documentos: Documento[];
+}
+const { documentos } = Astro.props;
+---
+
+<ul class="lista-docs">
+  {
+    documentos.map((d) => {
+      const externo = d.url.startsWith('http');
+      return (
+        <li>
+          <a href={d.url} rel={externo ? 'noopener' : undefined}>
+            <Icone nome="documento" tamanho={20} />
+            <span>{d.titulo}</span>
+            <Icone nome={externo ? 'externo' : 'seta'} tamanho={16} />
+          </a>
+        </li>
+      );
+    })
+  }
+</ul>

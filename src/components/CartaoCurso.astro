@@ -1,0 +1,59 @@
+---
+import type { CollectionEntry } from 'astro:content';
+import { Image } from 'astro:assets';
+import Icone from './Icone.astro';
+
+interface Props {
+  curso: CollectionEntry<'cursos'>;
+}
+const { curso } = Astro.props;
+const d = curso.data;
+const cartaz = d.cartazes[0];
+---
+
+<article class:list={['cartao', { 'cartao--cartaz': cartaz }]}>
+  {
+    cartaz ? (
+      <Image src={cartaz} alt="" widths={[320, 480, 640]} sizes="(max-width: 600px) 100vw, 300px" class="cartaz" />
+    ) : (
+      <div class="icone-caixa">
+        <Icone nome={d.icone} />
+      </div>
+    )
+  }
+  <div class="corpo">
+    <h3><a class="cartao__ligacao" href={`/oferta-formativa/${curso.id}/`}>{d.titulo}</a></h3>
+    <p>{d.area}</p>
+    <div class="cartao__rodape">
+      <span>{d.nivel} · {d.duracao}</span>
+      <Icone nome="seta" tamanho={18} />
+    </div>
+  </div>
+</article>
+
+<style>
+  .cartao--cartaz {
+    padding: 0;
+    overflow: hidden;
+  }
+  .cartaz {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 1;
+    object-fit: cover;
+  }
+  .corpo {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+  }
+  .cartao--cartaz .corpo {
+    padding: 1.1rem 1.25rem 1.25rem;
+  }
+  h3 {
+    font-size: 1.12rem;
+  }
+  p {
+    margin: 0;
+  }
+</style>

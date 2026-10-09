@@ -1,0 +1,449 @@
+---
+import { Image } from 'astro:assets';
+import imagem from '../assets/erasmus-acreditacao.webp';
+import Pagina from '../layouts/Pagina.astro';
+import Icone from '../components/Icone.astro';
+import { erasmus } from '../data/site';
+
+// Formulário de candidatura e plano estratégico ainda vivem no sítio antigo.
+const urlCandidatura = 'https://www.epfundao.edu.pt/page/candidatura';
+const urlPlano = 'https://www.epfundao.edu.pt/page/plano-estrategico-de-internacionalizacao-2020-2025';
+
+const tipologias = [
+  { quem: 'Alunos em formação inicial', tempo: '1 mês', nota: 'Durante o curso, numa entidade parceira da sua área de formação.' },
+  { quem: 'Graduados', tempo: '3 meses', nota: 'Para quem concluiu um curso na EPF há menos de um ano.' },
+  { quem: 'Docentes e staff', tempo: '5 dias', nota: 'Contacto com outras realidades profissionais e formativas.' },
+];
+
+const condicoes = [
+  'Viagem',
+  'Seguro de acidentes, saúde e responsabilidade civil',
+  'Alojamento durante todo o período da mobilidade (apartamento, residencial ou casa de família)',
+  'Alimentação durante todo o período da mobilidade',
+  'Apoio individual para transportes locais',
+  'Apoio a despesas diversas («pocket money»)',
+  'Formação linguística online e preparação cultural',
+];
+
+const passos = [
+  {
+    titulo: 'Candidatura',
+    texto:
+      'Preenche o formulário online ou manifesta a tua intenção junto da Direção Pedagógica, da Coordenação de Curso ou da Direção de Turma. Junta uma carta de motivação e o teu CV, em português e inglês.',
+  },
+  {
+    titulo: 'Avaliação',
+    texto:
+      'A Direção Pedagógica, as Coordenações de Curso e as Direções de Turma aplicam os critérios de seleção a cada candidatura. Podes ser chamado para uma entrevista com a equipa que coordena os projetos Erasmus+.',
+  },
+  {
+    titulo: 'Resultados',
+    texto: 'Os resultados são divulgados até 30 dias antes do início de cada período de mobilidades.',
+  },
+  {
+    titulo: 'Preparação',
+    texto:
+      'Reunião com os encarregados de educação, atividades de preparação para o país de destino e, na semana anterior à partida, entrega da documentação oficial da Agência Nacional Erasmus+.',
+  },
+  {
+    titulo: '«Conta-me como foi!»',
+    texto: 'No regresso, os participantes partilham a experiência com a comunidade educativa.',
+  },
+];
+
+const criterios = [
+  {
+    grupo: 'Alunos em formação inicial',
+    nota: 'Alunos que se encontram a frequentar a EPF',
+    itens: [
+      'Interesse revelado quanto à perspetiva europeia.',
+      'Perfil pessoal: sentido de responsabilidade, autonomia, contexto familiar, motivações, valores cívicos e capacidade de integração e adaptação.',
+      'Perfil técnico: capacidade de transferir aprendizagens para novos contextos, desempenho em contexto de trabalho e interesse nas atividades da componente técnica.',
+      'Contexto sociocultural e familiar, por esta ser, para muitos, uma oportunidade única de viver uma experiência internacional.',
+      'Mérito na colaboração em atividades da escola, voluntariado, atividades de cariz social e ajuda a colegas com mais dificuldades.',
+      'Análise da carta de motivação e do Curriculum Vitae.',
+    ],
+  },
+  {
+    grupo: 'Graduados',
+    nota: 'Alunos que concluíram um curso na EPF há menos de um ano',
+    itens: [
+      'Interesse revelado quanto à perspetiva europeia.',
+      'Situação profissional, pessoal e familiar dos finalistas, enquanto oportunidade de abrir novos horizontes com vista a uma situação profissional estável.',
+      'Prioridade a graduados com menos oportunidades, em situação profissional precária ou que desejem aperfeiçoar as suas competências profissionais.',
+      'Avaliação do percurso escolar na EPF.',
+      'Mérito na colaboração em atividades da escola, voluntariado, atividades de cariz social e ajuda a colegas com mais dificuldades.',
+      'Análise da carta de motivação e do Curriculum Vitae.',
+    ],
+  },
+  {
+    grupo: 'Staff',
+    nota: 'Professores ou funcionários que exercem funções na EPF',
+    itens: [
+      'Motivação para participar no projeto de cariz europeu.',
+      'Interesse em contactar diferentes realidades profissionais e formativas.',
+      'Disponibilidade de deslocação ao estrangeiro.',
+      'Pertinência da sua área de ação para os objetivos do projeto educativo da escola.',
+      'Análise da carta de motivação e do Curriculum Vitae.',
+    ],
+  },
+];
+
+const documentos = [
+  'Ficha de identificação do participante, devidamente preenchida',
+  'Curriculum Vitae em português e inglês, devidamente corrigido',
+  'Cópia digitalizada e legível do Cartão de Cidadão',
+  'Comprovativo de NIB de conta da qual o aluno seja titular',
+  'Autorização de residência válida até ao início da mobilidade, para participantes com nacionalidade de fora da UE',
+];
+---
+
+<Pagina
+  titulo="Erasmus+"
+  intro="EPF, um projeto de formação também europeu. Desde 1998 que alunos e professores realizam estágios noutros países da Europa."
+>
+  <span slot="antes-titulo" class="marcas">#SomosEuropa #SomosEPF</span>
+
+  <section class="seccao seccao--suave faixa">
+    <div class="contentor">
+      <dl class="numeros">
+        {erasmus.map((n) => (
+          <div>
+            <dt>{n.valor}</dt>
+            <dd>{n.rotulo}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  </section>
+
+  <section class="seccao">
+    <div class="contentor duas-colunas">
+      <div class="prosa">
+        <span class="sobretitulo">O programa</span>
+        <h2>Preparar cidadãos para novos ambientes</h2>
+        <p>
+          A Escola Profissional do Fundão tem possibilitado, desde 1998, estágios europeus a muitos dos seus alunos e professores, no
+          âmbito dos programas Leonardo da Vinci e, atualmente, Erasmus+. Estes assumem-se como um dos pilares do Projeto Educativo
+          da escola, contribuindo para a formação e capacitação dos seus alunos e profissionais e para os desafios do mercado de
+          trabalho global.
+        </p>
+        <p>
+          Participar em projetos de mobilidade europeus é preparar cidadãos para novos ambientes sociais, culturais e
+          organizacionais, valorizando e incentivando o processo de formação contínua.
+        </p>
+
+        <h3>Somos uma escola VET Mobility Charter</h3>
+        <p>
+          Enquanto reconhecimento das boas práticas na operacionalização dos projetos de mobilidade, foi atribuído à EPF, em 2016, o
+          Certificado de Qualidade VET Mobility Charter pela Agência Nacional Erasmus+. Este selo é uma mais-valia para a escola e
+          dá continuidade ao caminho de internacionalização que traçámos.
+        </p>
+        <p>
+          <a href={urlPlano} class="ligacao-seta" rel="noopener">
+            Plano Estratégico de Internacionalização 2020/2025 <Icone nome="externo" tamanho={16} />
+          </a>
+        </p>
+      </div>
+      <Image
+        src={imagem}
+        alt="Escola VET-Charter. Acreditação Erasmus+ para mobilidades europeias."
+        widths={[400, 640, 900]}
+        sizes="(max-width: 760px) 100vw, 420px"
+        class="imagem"
+      />
+    </div>
+  </section>
+
+  <section class="seccao seccao--suave">
+    <div class="contentor">
+      <div class="cabecalho-seccao">
+        <div>
+          <span class="sobretitulo">Projetos de mobilidade</span>
+          <h2>Quem pode participar</h2>
+          <p>
+            Os participantes são integrados numa entidade parceira, de acordo com a sua área de formação e perfil, onde realizam
+            práticas em contexto de trabalho e desenvolvem competências técnicas, sociais e culturais.
+          </p>
+        </div>
+      </div>
+      <div class="grelha grelha--3">
+        {tipologias.map((t) => (
+          <div class="cartao">
+            <strong class="tempo">{t.tempo}</strong>
+            <h3>{t.quem}</h3>
+            <p>{t.nota}</p>
+          </div>
+        ))}
+      </div>
+
+      <div class="condicoes">
+        <h3>Condições oferecidas</h3>
+        <ul>
+          {condicoes.map((c) => <li>{c}</li>)}
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section id="candidatura" class="seccao">
+    <div class="contentor duas-colunas">
+      <div>
+        <span class="sobretitulo">Candidatura e seleção</span>
+        <h2>Como funciona</h2>
+        <ol class="passos">
+          {passos.map((p, i) => (
+            <li>
+              <span>{i + 1}</span>
+              <div>
+                <strong>{p.titulo}</strong>
+                <p>{p.texto}</p>
+              </div>
+            </li>
+          ))}
+        </ol>
+      </div>
+      <aside class="lateral">
+        <div class="painel">
+          <h3>Candidata-te</h3>
+          <p>A seleção surge de um convite ou de um processo de candidatura, tendo sempre em conta o desempenho ao longo do percurso formativo.</p>
+          <a href={urlCandidatura} class="botao botao--escuro" rel="noopener">Formulário de candidatura <Icone nome="externo" tamanho={16} /></a>
+          <a href="/contactos/?assunto=Erasmus%2B" class="ligacao-seta">Tirar dúvidas com a escola</a>
+        </div>
+        <div class="painel">
+          <h3>Depois de selecionado</h3>
+          <p>Documentação a entregar:</p>
+          <ul>
+            {documentos.map((d) => <li>{d}</li>)}
+          </ul>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <section class="seccao seccao--suave">
+    <div class="contentor">
+      <div class="cabecalho-seccao">
+        <div>
+          <span class="sobretitulo">Transparência</span>
+          <h2>Critérios de seleção</h2>
+          <p>
+            O processo de seleção é transparente e justo para todos os interessados. Cada critério é valorizado de 1 a 5 pontos e o
+            número de mobilidades por curso é, sempre que possível, proporcional ao total de alunos da escola.
+          </p>
+        </div>
+      </div>
+      <div class="criterios">
+        {criterios.map((c, i) => (
+          <details open={i === 0}>
+            <summary>
+              <span>
+                <strong>{c.grupo}</strong>
+                <small>{c.nota}</small>
+              </span>
+              <Icone nome="baixo" tamanho={20} />
+            </summary>
+            <ol>
+              {c.itens.map((x) => <li>{x}</li>)}
+            </ol>
+          </details>
+        ))}
+      </div>
+      <p class="nota">
+        A análise não se esgota na aplicação estrita dos critérios. Envolve a Direção Pedagógica, os Coordenadores de Curso, os
+        Diretores de Turma, o Psicólogo, os Professores de Línguas Estrangeiras e o Gabinete de Planeamento e Cooperação
+        Internacional, que coordena os projetos Erasmus+.
+      </p>
+    </div>
+  </section>
+
+  <section class="seccao">
+    <div class="contentor grelha grelha--2">
+      <div class="painel">
+        <h3>Parceiros e entidades de acolhimento</h3>
+        <p>
+          O projeto integra parceiros de diferentes países e de diferentes modelos de instituição. A alocação de candidatos a países
+          e parceiros é feita pela escola, de acordo com a disponibilidade e os objetivos de cada parte.
+        </p>
+      </div>
+      <div class="painel">
+        <h3>Saída de menores do território nacional</h3>
+        <p>
+          Os menores que viajem desacompanhados de ambos os progenitores devem apresentar uma autorização de saída escrita, datada e
+          assinada por quem exerce a responsabilidade parental, com assinatura legalmente certificada e com a identificação de quem
+          os acompanha (Decreto-Lei n.º 138/2006 e Lei n.º 23/2007).
+        </p>
+      </div>
+    </div>
+  </section>
+</Pagina>
+
+<style>
+  .marcas {
+    display: block;
+    margin-bottom: 0.75rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--verde);
+  }
+  .faixa {
+    padding-block: 2.5rem;
+  }
+  .faixa .numeros dt {
+    color: var(--verde-escuro);
+  }
+  .imagem {
+    width: 100%;
+    height: auto;
+    border-radius: var(--raio-g);
+  }
+  .tempo {
+    font-family: var(--fonte-titulo);
+    font-size: 2.2rem;
+    line-height: 1;
+    color: var(--verde-escuro);
+    margin-bottom: 0.75rem;
+  }
+  .cartao p {
+    margin: 0;
+  }
+  .condicoes {
+    margin-top: 1.25rem;
+    padding: 1.5rem;
+    background: #fff;
+    border: 1px solid var(--linha);
+    border-radius: var(--raio-g);
+  }
+  .condicoes ul {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
+    gap: 0.6rem 2rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .condicoes li {
+    position: relative;
+    padding-left: 1.6rem;
+  }
+  .condicoes li::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0.45em;
+    width: 0.9rem;
+    height: 0.5rem;
+    border-left: 2.5px solid var(--verde-escuro);
+    border-bottom: 2.5px solid var(--verde-escuro);
+    transform: rotate(-45deg);
+  }
+
+  .passos {
+    display: grid;
+    gap: 1.25rem;
+    margin: 1.5rem 0 0;
+    padding: 0;
+    list-style: none;
+  }
+  .passos li {
+    display: flex;
+    gap: 1rem;
+  }
+  .passos span {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 2.2rem;
+    height: 2.2rem;
+    border-radius: 50%;
+    background: var(--verde-claro);
+    color: var(--verde-escuro);
+    font-weight: 700;
+  }
+  .passos p {
+    margin: 0.2rem 0 0;
+    color: var(--texto-suave);
+  }
+
+  .lateral {
+    display: grid;
+    gap: 1.25rem;
+  }
+  .lateral .painel {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  .lateral .painel > * {
+    margin: 0;
+  }
+  .lateral ul {
+    padding-left: 1.1rem;
+    font-size: 0.93rem;
+  }
+  .lateral li + li {
+    margin-top: 0.35rem;
+  }
+  .lateral .botao,
+  .lateral .ligacao-seta {
+    justify-content: center;
+  }
+  .lateral .ligacao-seta {
+    font-size: 0.93rem;
+  }
+
+  .criterios {
+    display: grid;
+    gap: 0.75rem;
+  }
+  details {
+    background: #fff;
+    border: 1px solid var(--linha);
+    border-radius: var(--raio-g);
+  }
+  summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1.1rem 1.4rem;
+    cursor: pointer;
+    list-style: none;
+  }
+  summary::-webkit-details-marker {
+    display: none;
+  }
+  summary strong {
+    display: block;
+    font-family: var(--fonte-titulo);
+    font-size: 1.15rem;
+    color: var(--petroleo);
+  }
+  summary small {
+    color: var(--texto-suave);
+    font-size: 0.88rem;
+  }
+  summary :global(svg) {
+    flex: none;
+    transition: transform 0.15s;
+  }
+  details[open] summary :global(svg) {
+    transform: rotate(180deg);
+  }
+  details ol {
+    margin: 0;
+    padding: 0 1.4rem 1.3rem 2.8rem;
+  }
+  details li + li {
+    margin-top: 0.5rem;
+  }
+  .nota {
+    margin: 1.5rem 0 0;
+    max-width: 80ch;
+    font-size: 0.93rem;
+    color: var(--texto-suave);
+  }
+  .painel p:last-child {
+    margin: 0;
+  }
+</style>

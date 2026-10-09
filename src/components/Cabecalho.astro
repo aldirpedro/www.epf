@@ -1,0 +1,308 @@
+---
+import { site, aplicacoes, navegacao } from '../data/site';
+import Icone from './Icone.astro';
+import Logo from './Logo.astro';
+
+const atual = Astro.url.pathname;
+const ativo = (url: string) => (url === '/' ? atual === '/' : atual.startsWith(url.split('#')[0]));
+---
+
+<div class="barra">
+  <div class="contentor barra__dentro">
+    <div class="barra__contactos">
+      <a href={`tel:${site.telefone.replace(/\s/g, '')}`}><Icone nome="telefone" tamanho={14} />{site.telefone}</a>
+      <a href={`mailto:${site.email}`}><Icone nome="email" tamanho={14} />{site.email}</a>
+    </div>
+    <ul class="barra__apps" aria-label="Aplicações">
+      {
+        aplicacoes.map((a) => (
+          <li>
+            <a href={a.url} rel="noopener">
+              {a.nome}
+            </a>
+          </li>
+        ))
+      }
+    </ul>
+  </div>
+</div>
+
+<header class="cabecalho">
+  <div class="contentor cabecalho__dentro">
+    <a href="/" class="cabecalho__logo" aria-label={`${site.nome} — início`}><Logo /></a>
+
+    <button class="cabecalho__menu" type="button" aria-expanded="false" aria-controls="nav-principal">
+      <span class="so-leitor">Menu</span>
+      <Icone nome="menu" tamanho={26} />
+    </button>
+
+    <nav id="nav-principal" class="nav" aria-label="Navegação principal">
+      <ul class="nav__lista">
+        {
+          navegacao.map((g) =>
+            g.itens ? (
+              <li class="nav__grupo">
+                <button type="button" class:list={['nav__item', { ativo: ativo(g.url) }]} aria-expanded="false">
+                  {g.nome}
+                  <Icone nome="baixo" tamanho={16} />
+                </button>
+                <ul class="nav__sub">
+                  {g.itens.map((i) => (
+                    <li>
+                      <a href={i.url}>
+                        <strong>{i.nome}</strong>
+                        {i.nota && <span>{i.nota}</span>}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </li>
+            ) : (
+              <li>
+                <a href={g.url} class:list={['nav__item', { ativo: ativo(g.url) }]} aria-current={ativo(g.url) ? 'page' : undefined}>
+                  {g.nome}
+                </a>
+              </li>
+            ),
+          )
+        }
+      </ul>
+      {
+        site.inscricoes.abertas && (
+          <a href="/inscricoes/" class="botao botao--primario nav__cta">
+            Inscreve-te
+          </a>
+        )
+      }
+    </nav>
+  </div>
+</header>
+
+<script>
+  const menu = document.querySelector<HTMLButtonElement>('.cabecalho__menu');
+  const nav = document.querySelector<HTMLElement>('.nav');
+  const grupos = [...document.querySelectorAll<HTMLButtonElement>('.nav__grupo > button')];
+
+  const fecharGrupos = (exceto?: HTMLButtonElement) =>
+    grupos.forEach((b) => b !== exceto && b.setAttribute('aria-expanded', 'false'));
+
+  menu?.addEventListener('click', () => {
+    const aberto = menu.getAttribute('aria-expanded') === 'true';
+    menu.setAttribute('aria-expanded', String(!aberto));
+    nav?.classList.toggle('nav--aberta', !aberto);
+  });
+
+  grupos.forEach((b) =>
+    b.addEventListener('click', () => {
+      const aberto = b.getAttribute('aria-expanded') === 'true';
+      fecharGrupos(b);
+      b.setAttribute('aria-expanded', String(!aberto));
+    }),
+  );
+
+  document.addEventListener('click', (e) => {
+    if (!(e.target as Element).closest('.nav__grupo')) fecharGrupos();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') fecharGrupos();
+  });
+</script>
+
+<style>
+  .barra {
+    background: var(--petroleo);
+    color: #c9d8d3;
+    font-size: 0.8rem;
+  }
+  .barra__dentro {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    min-height: 2.25rem;
+  }
+  .barra a {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    color: inherit;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  .barra a:hover {
+    color: #fff;
+  }
+  .barra__contactos,
+  .barra__apps {
+    display: flex;
+    gap: 1.25rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .cabecalho {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    background: rgb(255 255 255 / 0.94);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--linha);
+  }
+  .cabecalho__dentro {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1.5rem;
+    min-height: 4.5rem;
+  }
+  .cabecalho__logo {
+    text-decoration: none;
+    flex: none;
+  }
+  .cabecalho__menu {
+    display: none;
+    padding: 0.4rem;
+    background: none;
+    border: 0;
+    color: var(--petroleo);
+    cursor: pointer;
+  }
+
+  .nav {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
+  .nav__lista {
+    display: flex;
+    align-items: center;
+    gap: 0.15rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .nav__grupo {
+    position: relative;
+  }
+  .nav__item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.55rem 0.7rem;
+    border: 0;
+    border-radius: 8px;
+    background: none;
+    font: inherit;
+    font-size: 0.94rem;
+    font-weight: 550;
+    color: var(--petroleo);
+    text-decoration: none;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .nav__item:hover,
+  .nav__item[aria-expanded='true'] {
+    background: var(--fundo-suave);
+    color: var(--petroleo);
+  }
+  .nav__item.ativo {
+    color: var(--verde-escuro);
+  }
+  .nav__item :global(svg) {
+    transition: transform 0.15s;
+  }
+  .nav__item[aria-expanded='true'] :global(svg) {
+    transform: rotate(180deg);
+  }
+  .nav__sub {
+    display: none;
+    position: absolute;
+    top: calc(100% + 0.6rem);
+    left: 0;
+    min-width: 19rem;
+    margin: 0;
+    padding: 0.5rem;
+    list-style: none;
+    background: #fff;
+    border: 1px solid var(--linha);
+    border-radius: var(--raio-g);
+    box-shadow: var(--sombra);
+  }
+  .nav__item[aria-expanded='true'] + .nav__sub {
+    display: block;
+  }
+  .nav__sub a {
+    display: flex;
+    flex-direction: column;
+    padding: 0.6rem 0.8rem;
+    border-radius: var(--raio);
+    color: var(--texto);
+    text-decoration: none;
+  }
+  .nav__sub a:hover {
+    background: var(--fundo-suave);
+  }
+  .nav__sub strong {
+    font-weight: 600;
+    font-size: 0.94rem;
+  }
+  .nav__sub span {
+    font-size: 0.82rem;
+    color: var(--texto-suave);
+  }
+  .nav__cta {
+    padding: 0.6rem 1.1rem;
+    font-size: 0.94rem;
+    white-space: nowrap;
+  }
+
+  @media (max-width: 1080px) {
+    .cabecalho__menu {
+      display: block;
+    }
+    .nav {
+      display: none;
+      position: absolute;
+      inset: 100% 0 auto 0;
+      flex-direction: column;
+      align-items: stretch;
+      max-height: calc(100dvh - 4.5rem);
+      overflow-y: auto;
+      padding: 1rem var(--margem) 1.5rem;
+      background: #fff;
+      border-bottom: 1px solid var(--linha);
+      box-shadow: var(--sombra);
+    }
+    .nav--aberta {
+      display: flex;
+    }
+    .nav__lista {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .nav__item {
+      width: 100%;
+      justify-content: space-between;
+      padding: 0.8rem 0.5rem;
+      font-size: 1rem;
+    }
+    .nav__sub {
+      position: static;
+      border: 0;
+      box-shadow: none;
+      padding: 0 0 0.5rem 0.5rem;
+    }
+    .nav__cta {
+      justify-content: center;
+    }
+  }
+  @media (max-width: 640px) {
+    .barra__contactos a:last-child {
+      display: none;
+    }
+    .barra__apps {
+      gap: 0.9rem;
+    }
+  }
+</style>

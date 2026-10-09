@@ -1,0 +1,123 @@
+---
+import { getCollection } from 'astro:content';
+import Pagina from '../layouts/Pagina.astro';
+import Icone from '../components/Icone.astro';
+import { site } from '../data/site';
+
+const cursos = (await getCollection('cursos')).sort((a, b) => a.data.ordem - b.data.ordem);
+const grupos = [
+  { nome: 'Cursos Profissionais', cursos: cursos.filter((c) => c.data.tipo === 'profissional') },
+  { nome: 'Cursos de Educação e Formação', cursos: cursos.filter((c) => c.data.tipo === 'cef') },
+];
+const passos = [
+  'Preenche a pré-inscrição com os teus dados e o curso pretendido.',
+  'A secretaria contacta-te para confirmar a informação e indicar os documentos necessários.',
+  'A matrícula é concluída presencialmente na escola.',
+];
+---
+
+<Pagina
+  titulo={`Inscrições ${site.inscricoes.anoLetivo}`}
+  intro="Faz a tua pré-inscrição online. Não é uma matrícula: serve para a escola te contactar e acompanhar o processo."
+  migalhas={[{ nome: 'Oferta formativa', url: '/oferta-formativa/' }]}
+>
+  <section class="seccao">
+    <div class="contentor duas-colunas">
+      <form class="formulario" data-formulario="pre-inscricao" data-assunto={`Pré-inscrição ${site.inscricoes.anoLetivo}`} data-email={site.email}>
+        <div class="campo campo--largo">
+          <label for="i-nome">Nome completo</label>
+          <input id="i-nome" name="nome" autocomplete="name" required />
+        </div>
+        <div class="campo">
+          <label for="i-nascimento">Data de nascimento</label>
+          <input id="i-nascimento" name="nascimento" type="date" autocomplete="bday" required />
+        </div>
+        <div class="campo">
+          <label for="i-escolaridade">Escolaridade concluída</label>
+          <select id="i-escolaridade" name="escolaridade" required>
+            <option value="">Seleciona…</option>
+            <option>6.º ano</option>
+            <option>7.º ano</option>
+            <option>8.º ano</option>
+            <option>9.º ano</option>
+            <option>Outra</option>
+          </select>
+        </div>
+        <div class="campo">
+          <label for="i-email">Email</label>
+          <input id="i-email" name="email" type="email" autocomplete="email" required />
+        </div>
+        <div class="campo">
+          <label for="i-telefone">Telemóvel</label>
+          <input id="i-telefone" name="telefone" type="tel" autocomplete="tel" required />
+        </div>
+        <div class="campo">
+          <label for="i-curso1">Curso pretendido (1.ª opção)</label>
+          <select id="i-curso1" name="curso1" required>
+            <option value="">Seleciona…</option>
+            {grupos.map((g) => (
+              <optgroup label={g.nome}>
+                {g.cursos.map((c) => <option data-slug={c.id}>{c.data.titulo}</option>)}
+              </optgroup>
+            ))}
+          </select>
+        </div>
+        <div class="campo">
+          <label for="i-curso2">2.ª opção (facultativo)</label>
+          <select id="i-curso2" name="curso2">
+            <option value="">Nenhuma</option>
+            {grupos.map((g) => (
+              <optgroup label={g.nome}>
+                {g.cursos.map((c) => <option>{c.data.titulo}</option>)}
+              </optgroup>
+            ))}
+          </select>
+        </div>
+        <div class="campo">
+          <label for="i-ee">Encarregado de educação</label>
+          <input id="i-ee" name="encarregado" />
+        </div>
+        <div class="campo">
+          <label for="i-ee-tel">Contacto do encarregado de educação</label>
+          <input id="i-ee-tel" name="encarregado_contacto" type="tel" />
+        </div>
+        <div class="campo campo--largo">
+          <label for="i-obs">Observações</label>
+          <textarea id="i-obs" name="observacoes"></textarea>
+        </div>
+        <label class="consentimento campo--largo">
+          <input type="checkbox" name="consentimento" value="sim" required />
+          <span>Autorizo o tratamento destes dados para efeitos de pré-inscrição, nos termos da <a href="/privacidade/">política de privacidade</a>. Se for menor, confirmo que tenho autorização do meu encarregado de educação.</span>
+        </label>
+        <button type="submit" class="botao botao--escuro">Enviar pré-inscrição <Icone nome="seta" tamanho={18} /></button>
+        <p role="status" aria-live="polite"></p>
+      </form>
+
+      <aside class="painel">
+        <h3>Como funciona</h3>
+        <ol>
+          {passos.map((p) => <li>{p}</li>)}
+        </ol>
+        <p>Preferes tratar de tudo presencialmente ou por telefone?</p>
+        <p><a href={`tel:${site.telefone.replace(/\s/g, '')}`}><strong>{site.telefone}</strong></a><br /><a href={`mailto:${site.email}`}>{site.email}</a></p>
+      </aside>
+    </div>
+  </section>
+</Pagina>
+
+<script>
+  // Pré-seleciona o curso quando se chega de /oferta-formativa/<curso>/
+  const slug = new URLSearchParams(location.search).get('curso');
+  const opcao = slug && document.querySelector<HTMLOptionElement>(`#i-curso1 option[data-slug="${CSS.escape(slug)}"]`);
+  if (opcao) opcao.selected = true;
+</script>
+
+<style>
+  .painel ol {
+    margin: 0 0 1.25rem;
+    padding-left: 1.2rem;
+  }
+  .painel li {
+    margin-bottom: 0.5rem;
+  }
+</style>

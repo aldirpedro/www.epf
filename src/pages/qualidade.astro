@@ -1,0 +1,71 @@
+---
+import Pagina from '../layouts/Pagina.astro';
+import ListaDocumentos from '../components/ListaDocumentos.astro';
+import { eqavet } from '../data/documentos';
+
+const fases = [
+  { nome: 'Planeamento', texto: 'Definição de metas e objetivos alinhados com as políticas europeias, nacionais e regionais.' },
+  { nome: 'Implementação', texto: 'Execução dos planos de ação, com o envolvimento de alunos, docentes e parceiros.' },
+  { nome: 'Avaliação', texto: 'Recolha e análise de indicadores de resultados e de processos.' },
+  { nome: 'Revisão', texto: 'Ajuste das práticas a partir dos resultados, num ciclo de melhoria contínua.' },
+];
+---
+
+<Pagina
+  titulo="Qualidade · EQAVET"
+  intro="A EPF tem o seu sistema de garantia da qualidade alinhado com o Quadro de Referência Europeu de Garantia da Qualidade para o Ensino e Formação Profissional."
+  migalhas={[{ nome: 'A Escola', url: '/escola/' }]}
+>
+  <section class="seccao">
+    <div class="contentor duas-colunas">
+      <div>
+        <h2>Documentos do sistema de qualidade</h2>
+        <ListaDocumentos documentos={eqavet} />
+      </div>
+      <aside>
+        <h2>O ciclo de qualidade</h2>
+        <ol class="ciclo">
+          {fases.map((f, i) => (
+            <li>
+              <span>{i + 1}</span>
+              <div>
+                <strong>{f.nome}</strong>
+                <p>{f.texto}</p>
+              </div>
+            </li>
+          ))}
+        </ol>
+      </aside>
+    </div>
+  </section>
+</Pagina>
+
+<style>
+  .ciclo {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: 1rem;
+  }
+  .ciclo li {
+    display: flex;
+    gap: 1rem;
+  }
+  .ciclo span {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 2.2rem;
+    height: 2.2rem;
+    border-radius: 50%;
+    background: var(--verde-claro);
+    color: var(--verde-escuro);
+    font-weight: 700;
+  }
+  .ciclo p {
+    margin: 0.15rem 0 0;
+    font-size: 0.93rem;
+    color: var(--texto-suave);
+  }
+</style>

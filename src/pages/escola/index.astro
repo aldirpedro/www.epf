@@ -1,0 +1,176 @@
+---
+import { Image } from 'astro:assets';
+import equipaEntrada from '../../assets/escola/equipa-entrada.webp';
+import equipaVisita1 from '../../assets/escola/equipa-visita-1.webp';
+import equipaVisita2 from '../../assets/escola/equipa-visita-2.webp';
+import Pagina from '../../layouts/Pagina.astro';
+import Icone from '../../components/Icone.astro';
+import ChamadaInscricoes from '../../components/ChamadaInscricoes.astro';
+import { site } from '../../data/site';
+
+const marcos = [
+  { ano: '1992', texto: 'Criação da escola por Contrato-Programa celebrado a 29 de julho entre a Câmara Municipal, a Associação Comercial e Industrial do Fundão e o Ministério da Educação. No primeiro ano, 48 alunos em duas turmas do Curso Técnico de Serviços Comerciais.' },
+  { ano: '1993', texto: 'Nasce o Curso Técnico de Construção Civil. A escola passa a ter 5 turmas, uma delas de um Curso de Especialização Tecnológica em Gestão de Stocks.' },
+  { ano: '1995', texto: 'Entra em funcionamento o Curso de Hotelaria/Restauração e a escola atinge as 7 turmas.' },
+  { ano: '1996', texto: 'É criado o Curso de Operador de Construção Civil, de nível II de qualificação profissional. A escola atinge as 9 turmas.' },
+  { ano: '1998', texto: 'Primeiros estágios europeus de alunos e professores, no âmbito do programa Leonardo da Vinci.' },
+  { ano: '1999', texto: 'É criado o Curso Técnico de Mecânica/Gás e a escola atinge as 11 turmas.' },
+  { ano: '2016', texto: 'A Agência Nacional Erasmus+ atribui à EPF o Certificado de Qualidade VET Mobility Charter.' },
+];
+---
+
+<Pagina titulo="Sobre nós" intro={site.lema} migalhas={[{ nome: 'A Escola', url: '/escola/' }]}>
+  <section class="seccao">
+    <div class="contentor duas-colunas">
+      <div class="prosa">
+        <span class="sobretitulo">Missão</span>
+        <h2>Formação com exigência e inovação</h2>
+        <p class="lead">
+          Educamos e qualificamos cidadãos, proporcionando-lhes formação com exigência e inovação que lhes permita um bom desempenho
+          profissional e, simultaneamente, responda às exigências do mercado laboral regional, valorizando as atitudes pessoais e
+          profissionais.
+        </p>
+        <p>
+          A EPF considera que o sucesso da sua missão assenta, em primeira instância, nos recursos humanos — professores e
+          funcionários. Desde o início da atividade, promoveu uma política de contratação sem termo, de forma a potenciar a
+          estabilidade dos docentes e a fomentar a qualidade da formação ministrada.
+        </p>
+        <p>Excelente relacionamento entre professores e alunos, estágios em empresas e parcerias internacionais fazem parte do dia a dia da escola.</p>
+      </div>
+      <aside class="painel">
+        <h3>A escola em resumo</h3>
+        <dl>
+          <dt>Entidade proprietária</dt>
+          <dd>{site.entidade}</dd>
+          <dt>Fundação</dt>
+          <dd>{site.fundacao}</dd>
+          <dt>Morada</dt>
+          <dd>{site.morada.slice(0, 2).join(', ')}</dd>
+        </dl>
+        <p style="margin:1.25rem 0 0"><a href="/escola/documentos/" class="ligacao-seta">Documentos institucionais <Icone nome="seta" tamanho={18} /></a></p>
+      </aside>
+    </div>
+  </section>
+
+  <section class="seccao equipa" aria-label="A equipa da escola">
+    <div class="contentor mosaico">
+      <Image src={equipaEntrada} alt="Equipa da escola a acenar nas escadas da entrada" widths={[640, 960, 1400]} sizes="(max-width: 760px) 100vw, 760px" class="mosaico__grande" />
+      <Image src={equipaVisita1} alt="Fotografia de grupo da equipa da escola numa visita institucional" widths={[400, 640, 900]} sizes="(max-width: 760px) 100vw, 400px" />
+      <Image src={equipaVisita2} alt="Momento de convívio da equipa da escola durante uma visita institucional" widths={[400, 640, 900]} sizes="(max-width: 760px) 100vw, 400px" />
+    </div>
+  </section>
+
+  <section class="seccao seccao--suave">
+    <div class="contentor">
+      <div class="cabecalho-seccao">
+        <div>
+          <span class="sobretitulo">História</span>
+          <h2>Mais de três décadas a formar profissionais</h2>
+        </div>
+      </div>
+      <ol class="cronologia">
+        {marcos.map((m) => (
+          <li>
+            <strong>{m.ano}</strong>
+            <p>{m.texto}</p>
+          </li>
+        ))}
+      </ol>
+    </div>
+  </section>
+
+  <section class="seccao">
+    <div class="contentor">
+      <div class="cabecalho-seccao">
+        <div>
+          <span class="sobretitulo">Ensino profissional</span>
+          <h2>Vantagens de estudar numa escola profissional</h2>
+        </div>
+      </div>
+      <div class="grelha grelha--3">
+        <div class="cartao">
+          <div class="icone-caixa"><Icone nome="pasta" /></div>
+          <h3>Aprender uma profissão e entrar no mercado de trabalho</h3>
+          <p>Além das disciplinas científicas e socioculturais, os cursos têm uma forte componente de disciplinas técnicas de especialização, para além dos estágios e práticas em contexto laboral.</p>
+        </div>
+        <div class="cartao">
+          <div class="icone-caixa"><Icone nome="capelo" /></div>
+          <h3>Possibilidade de prosseguir estudos no ensino superior</h3>
+          <p>A frequência de uma escola profissional não é incompatível com a entrada no ensino superior. Antes pelo contrário: os alunos já estão rotinados com métodos de trabalho que mais tarde encontrarão nas faculdades.</p>
+        </div>
+        <div class="cartao">
+          <div class="icone-caixa"><Icone nome="pessoas" /></div>
+          <h3>Protocolos de colaboração com diversos organismos</h3>
+          <p>A escola não isola a sua atividade do meio humano e social em que está inserida. Mantém protocolos com o poder local, a sociedade civil, associações e empresas.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <ChamadaInscricoes />
+</Pagina>
+
+<style>
+  .equipa {
+    padding-top: 0;
+  }
+  .mosaico {
+    display: grid;
+    grid-template-columns: 1.9fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    gap: 0.75rem;
+  }
+  .mosaico img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: var(--raio-g);
+  }
+  .mosaico__grande {
+    grid-row: 1 / -1;
+  }
+  @media (max-width: 760px) {
+    .mosaico {
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: auto;
+    }
+    .mosaico__grande {
+      grid-row: auto;
+      grid-column: 1 / -1;
+    }
+  }
+  .cronologia {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    max-width: 52rem;
+    border-left: 2px solid var(--linha);
+  }
+  .cronologia li {
+    position: relative;
+    display: grid;
+    grid-template-columns: 4.5rem 1fr;
+    gap: 1rem;
+    padding: 0 0 1.75rem 1.75rem;
+  }
+  .cronologia li::before {
+    content: '';
+    position: absolute;
+    left: -7px;
+    top: 0.45rem;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--verde);
+    box-shadow: 0 0 0 4px var(--fundo-suave);
+  }
+  .cronologia strong {
+    font-family: var(--fonte-titulo);
+    font-size: 1.3rem;
+    color: var(--petroleo);
+  }
+  .cronologia p {
+    margin: 0.15rem 0 0;
+    color: var(--texto-suave);
+  }
+</style>

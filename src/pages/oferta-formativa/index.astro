@@ -1,0 +1,55 @@
+---
+import { getCollection } from 'astro:content';
+import Pagina from '../../layouts/Pagina.astro';
+import CartaoCurso from '../../components/CartaoCurso.astro';
+import Apoios from '../../components/Apoios.astro';
+import ChamadaInscricoes from '../../components/ChamadaInscricoes.astro';
+import { site } from '../../data/site';
+
+const cursos = (await getCollection('cursos')).sort((a, b) => a.data.ordem - b.data.ordem);
+const grupos = [
+  {
+    id: 'profissionais',
+    titulo: 'Cursos Profissionais',
+    texto: 'Cursos de três anos com dupla certificação: equivalência ao 12.º ano e qualificação profissional de nível 4. Incluem formação em contexto de trabalho.',
+    cursos: cursos.filter((c) => c.data.tipo === 'profissional'),
+  },
+  {
+    id: 'cef',
+    titulo: 'Cursos de Educação e Formação',
+    texto: 'Cursos de dupla certificação para jovens com mais de 15 anos e escolaridade mínima de 6.º ano, que permitem concluir o 3.º ciclo do ensino básico com certificação profissional.',
+    cursos: cursos.filter((c) => c.data.tipo === 'cef'),
+  },
+];
+---
+
+<Pagina
+  titulo={`Oferta formativa ${site.inscricoes.anoLetivo}`}
+  intro="Além das disciplinas científicas e socioculturais, os cursos da EPF têm uma forte componente técnica, com estágios e práticas em contexto de trabalho."
+>
+  {
+    grupos.map((g, i) => (
+      <section id={g.id} class:list={['seccao', { 'seccao--suave': i % 2 === 1 }]}>
+        <div class="contentor">
+          <div class="cabecalho-seccao">
+            <div>
+              <h2>{g.titulo}</h2>
+              <p>{g.texto}</p>
+            </div>
+          </div>
+          <div class="grelha grelha--4">
+            {g.cursos.map((c) => (
+              <CartaoCurso curso={c} />
+            ))}
+          </div>
+        </div>
+      </section>
+    ))
+  }
+  <section class="seccao">
+    <div class="contentor">
+      <Apoios />
+    </div>
+  </section>
+  <ChamadaInscricoes />
+</Pagina>

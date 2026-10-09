@@ -1,0 +1,26 @@
+---
+import type { CollectionEntry } from 'astro:content';
+import { mesAno } from '../data/datas';
+
+interface Props {
+  noticia: CollectionEntry<'noticias'>;
+}
+const { noticia } = Astro.props;
+const d = noticia.data;
+---
+
+<article class="cartao">
+  <span class="etiqueta">{d.categoria}</span>
+  <h3><a class="cartao__ligacao" href={`/noticias/${noticia.id}/`}>{d.titulo}</a></h3>
+  <p>{d.resumo}</p>
+  <div class="cartao__rodape">
+    <time datetime={d.data.toISOString().slice(0, 10)}>{mesAno(d.data)}</time>
+  </div>
+</article>
+
+<style>
+  .etiqueta {
+    align-self: flex-start;
+    margin-bottom: 0.9rem;
+  }
+</style>

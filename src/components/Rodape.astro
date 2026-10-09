@@ -1,0 +1,159 @@
+---
+import { site, aplicacoes } from '../data/site';
+import Icone from './Icone.astro';
+import Logo from './Logo.astro';
+
+const colunas = [
+  {
+    titulo: 'Instituição',
+    itens: [
+      { nome: 'Sobre nós', url: '/escola/' },
+      { nome: 'Documentos institucionais', url: '/escola/documentos/' },
+      { nome: 'Qualidade · EQAVET', url: '/qualidade/' },
+      { nome: 'Erasmus+', url: '/erasmus/' },
+      { nome: 'Contactos', url: '/contactos/' },
+    ],
+  },
+  {
+    titulo: 'Oferta formativa',
+    itens: [
+      { nome: 'Cursos Profissionais', url: '/oferta-formativa/#profissionais' },
+      { nome: 'Cursos de Educação e Formação', url: '/oferta-formativa/#cef' },
+      { nome: 'Inscrições', url: '/inscricoes/' },
+      { nome: 'Alumni e parceiros', url: '/comunidade/' },
+      { nome: 'Recrutamento', url: '/comunidade/#recrutamento' },
+    ],
+  },
+  { titulo: 'Aplicações', itens: aplicacoes },
+];
+---
+
+<footer class="rodape">
+  <div class="contentor rodape__grelha">
+    <div class="rodape__escola">
+      <Logo claro />
+      <p>{site.assinatura}</p>
+      <address>
+        <span><Icone nome="local" tamanho={16} />{site.morada.slice(0, 2).join(', ')}</span>
+        <a href={`tel:${site.telefone.replace(/\s/g, '')}`}><Icone nome="telefone" tamanho={16} />{site.telefone}</a>
+        <a href={`mailto:${site.email}`}><Icone nome="email" tamanho={16} />{site.email}</a>
+      </address>
+    </div>
+    {
+      colunas.map((c) => (
+        <nav aria-label={c.titulo}>
+          <h2>{c.titulo}</h2>
+          <ul>
+            {c.itens.map((i) => (
+              <li>
+                <a href={i.url}>{i.nome}</a>
+              </li>
+            ))}
+          </ul>
+        </nav>
+      ))
+    }
+  </div>
+
+  <div class="contentor rodape__base">
+    <p>© {new Date().getFullYear()} {site.entidade}</p>
+    <ul>
+      <li><a href="/privacidade/">Política de privacidade</a></li>
+      <li><a href={site.livroReclamacoes} rel="noopener">Livro de reclamações</a></li>
+      {
+        site.social.map((s) => (
+          <li>
+            <a href={s.url} rel="noopener">
+              {s.nome}
+            </a>
+          </li>
+        ))
+      }
+    </ul>
+  </div>
+</footer>
+
+<style>
+  .rodape {
+    background: var(--petroleo);
+    color: #b9cbc6;
+    font-size: 0.93rem;
+  }
+  .rodape a {
+    color: inherit;
+    text-decoration: none;
+  }
+  .rodape a:hover {
+    color: #fff;
+    text-decoration: underline;
+  }
+  .rodape__grelha {
+    display: grid;
+    grid-template-columns: 1.6fr repeat(3, 1fr);
+    gap: 2.5rem;
+    padding-block: 4rem 3rem;
+  }
+  .rodape__escola p {
+    margin: 1.25rem 0;
+    max-width: 30ch;
+    color: #dbe7e3;
+  }
+  address {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    font-style: normal;
+  }
+  address > * {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+  }
+  h2 {
+    font-family: var(--fonte);
+    font-size: 0.78rem;
+    font-weight: 650;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--verde);
+    margin-bottom: 1rem;
+  }
+  ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+  }
+  .rodape__base {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 0.75rem 2rem;
+    padding-block: 1.5rem;
+    border-top: 1px solid rgb(255 255 255 / 0.12);
+    font-size: 0.85rem;
+  }
+  .rodape__base p {
+    margin: 0;
+  }
+  .rodape__base ul {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 0.5rem 1.5rem;
+  }
+  @media (max-width: 900px) {
+    .rodape__grelha {
+      grid-template-columns: 1fr 1fr;
+    }
+    .rodape__escola {
+      grid-column: 1 / -1;
+    }
+  }
+  @media (max-width: 520px) {
+    .rodape__grelha {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
