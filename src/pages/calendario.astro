@@ -1,0 +1,121 @@
+---
+import Pagina from '../layouts/Pagina.astro';
+
+export const prerender = false;
+
+// --- DADOS FALSOS PARA O CALENDÁRIO ---
+const eventos = [
+  { id: '1', titulo: 'Feira Vocacional', data_inicio: '2026-11-15T09:00:00', local: 'Pavilhão', descricao: 'Orientação para o 9.º ano.' },
+  { id: '2', titulo: 'Sessão EQAVET', data_inicio: '2026-12-10T14:30:00', local: 'Auditório', descricao: 'Plano de melhoria.' },
+  { id: '3', titulo: 'Abertura do Ano', data_inicio: '2026-09-01T10:00:00', local: 'Polivalente', descricao: 'Receção aos alunos.' }
+];
+// --------------------------------------
+
+const dadosEventos = eventos.map(e => ({
+  id: e.id,
+  titulo: e.titulo,
+  data: new Date(e.data_inicio).toISOString().slice(0, 10), // Converte para YYYY-MM-DD
+  local: e.local,
+  resumo: e.descricao
+}));
+---
+
+<Pagina titulo="Calendário Escolar" descricao="Consulta as atividades da EPF por mês.">
+  <header class="topo-pagina">
+    <div class="contentor">
+      <ul class="migalhas">
+        <li><a href="/">Início</a></li>
+        <li>Calendário</li>
+      </ul>
+      <h1>Calendário Escolar</h1>
+      <p>Consulta as atividades por mês.</p>
+    </div>
+  </header>
+
+  <main class="contentor seccao">
+    <div class="painel" style="background: #fff; padding: 2rem;">
+      
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+        <button id="btn-prev" class="botao botao--contorno" aria-label="Mês anterior">‹</button>
+        <h2 id="mes-ano" style="margin: 0; text-transform: capitalize;"></h2>
+        <button id="btn-next" class="botao botao--contorno" aria-label="Mês seguinte">›</button>
+      </div>
+
+      <div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; text-align: center; font-weight: bold; margin-bottom: 1rem; color: var(--texto-suave);">
+        <span>Dom</span><span>Seg</span><span>Ter</span><span>Qua</span><span>Qui</span><span>Sex</span><span>Sáb</span>
+      </div>
+
+      <div id="grelha-calendario" style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px;"></div>
+      <div id="painel-dia" style="margin-top: 2rem;"></div>
+    </div>
+  </main>
+
+  <!-- Passamos os dados para o JavaScript -->
+  <script type="application/json" id="dados-eventos" set:html={JSON.stringify(dadosEventos)} />
+  
+  <script>
+    const eventos = JSON.parse(document.getElementById('dados-eventos').textContent);
+    const meses = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+    
+    const grelha = document.getElementById('grelha-calendario');
+    const tituloMes = document.getElementById('mes-ano');
+    const painelDia = document.getElementById('painel-dia');
+    
+    // Começa no mês atual
+    let dataAtual = new Date();
+    dataAtual.setDate(1);
+
+    function renderizarCalendario() {
+      const ano = dataAtual.getFullYear();
+      const mes = dataAtual.getMonth();
+      tituloMes.textContent = `${meses[mes]} ${ano}`;
+      grelha.innerHTML = '';
+      painelDia.innerHTML = '';
+
+      const primeiroDiaSemana = new Date(ano, mes, 1).getDay();
+      const totalDias = new Date(ano, mes + 1, 0).getDate();
+
+      for (let i = 0; i < primeiroDiaSemana; i++) grelha.innerHTML += `<div></div>`;
+
+      for (let dia = 1; dia <= totalDias; dia++) {
+        const dataStr = `${ano}-${String(mes + 1).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
+        const eventosDoDia = eventos.filter(e => e.data === dataStr);
+        
+        let estilo = 'padding: 1rem; border-radius: var(--raio); background: var(--fundo-suave); border: 1px solid var(--linha);';
+        if (eventosDoDia.length > 0) {
+          estilo = 'padding: 1rem; border-radius: var(--raio); background: var(--verde-claro); border: 1px solid var(--verde); cursor: pointer; font-weight: bold;';
+        }
+
+        const div = document.createElement('div');
+        div.style.cssText = estilo;
+        div.innerHTML = `<span>${dia}</span>`;
+        
+        if (eventosDoDia.length > 0) {
+          div.innerHTML += `<div style="width: 8px; height: 8px; background: var(--verde-escuro); border-radius: 50%; margin: 8px auto 0;"></div>`;
+          div.addEventListener('click', () => mostrarDetalhesDia(dia, eventosDoDia));
+        }
+        grelha.appendChild(div);
+      }
+    }
+
+    function mostrarDetalhesDia(dia, lista) {
+      const ano = dataAtual.getFullYear();
+      const mes = dataAtual.getMonth();
+      let html = `<h3 style="margin-bottom: 1rem;">Eventos a ${dia} de ${meses[mes]}</h3>`;
+      
+      lista.forEach(e => {
+        html += `
+          <a href="/eventos/${e.id}/" style="display: block; padding: 1rem; background: #fff; border: 1px solid var(--linha); border-radius: var(--raio); margin-bottom: 1rem; text-decoration: none; color: inherit;">
+            <strong style="color: var(--petroleo); font-size: 1.1rem;">${e.titulo}</strong>
+            <p style="margin: 0.5rem 0 0; font-size: 0.9rem;">📍 ${e.local}</p>
+          </a>
+        `;
+      });
+      painelDia.innerHTML = html;
+    }
+
+    document.getElementById('btn-prev').addEventListener('click', () => { dataAtual.setMonth(dataAtual.getMonth() - 1); renderizarCalendario(); });
+    document.getElementById('btn-next').addEventListener('click', () => { dataAtual.setMonth(dataAtual.getMonth() + 1); renderizarCalendario(); });
+    renderizarCalendario();
+  </script>
+</Pagina>

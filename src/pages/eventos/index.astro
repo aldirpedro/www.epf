@@ -1,0 +1,103 @@
+---
+import Pagina from '../../layouts/Pagina.astro';
+
+// --- DADOS FALSOS PARA TESTAR O DESIGN ---
+const eventosMock = [
+  { 
+    id: '1', 
+    titulo: 'Feira de Orientação Vocacional', 
+    descricao: 'Sessão de orientação para alunos do 9.º ano e famílias. Venham conhecer a nossa oferta!', 
+    data_inicio: '2026-11-15T09:00:00', 
+    local: 'Pavilhão da EPF', 
+    imagem_url: '' 
+  },
+  { 
+    id: '2', 
+    titulo: 'Sessão EQAVET', 
+    descricao: 'Apresentação do plano de melhoria contínua e resultados do ano anterior.', 
+    data_inicio: '2026-12-10T14:30:00', 
+    local: 'Auditório', 
+    imagem_url: '' 
+  },
+  { 
+    id: '3', 
+    titulo: 'Abertura do Ano Letivo', 
+    descricao: 'Receção aos novos alunos e apresentação da equipa docente.', 
+    data_inicio: '2026-09-01T10:00:00', 
+    local: 'Polivalente', 
+    imagem_url: '' 
+  }
+];
+
+const eventos = eventosMock;
+// -----------------------------------------
+
+const agora = new Date();
+// Separa os eventos futuros dos passados
+const futuros = eventos.filter(e => new Date(e.data_inicio) >= agora).sort((a, b) => new Date(a.data_inicio).getTime() - new Date(b.data_inicio).getTime());
+const passados = eventos.filter(e => new Date(e.data_inicio) < agora).sort((a, b) => new Date(b.data_inicio).getTime() - new Date(a.data_inicio).getTime());
+
+const fmt = new Intl.DateTimeFormat('pt-PT', { day: '2-digit', month: 'long', year: 'numeric' });
+const fmtHora = new Intl.DateTimeFormat('pt-PT', { hour: '2-digit', minute: '2-digit' });
+---
+
+<Pagina titulo="Eventos e Atividades" descricao="Consulta as atividades da Escola Profissional do Fundão.">
+  <header class="topo-pagina">
+    <div class="contentor">
+      <ul class="migalhas">
+        <li><a href="/">Início</a></li>
+        <li>Eventos</li>
+      </ul>
+      <h1>Eventos e Atividades</h1>
+      <p>Consulta as atividades da Escola Profissional do Fundão.</p>
+    </div>
+  </header>
+
+  <main class="contentor seccao">
+    <section>
+      <h2 class="sobretitulo">Próximos Eventos</h2>
+      
+      {futuros.length === 0 ? (
+        <p>Não há eventos agendados de momento.</p>
+      ) : (
+        <div class="grelha grelha--3" style="margin-top: 1rem;">
+          {futuros.map(evento => (
+            <article class="cartao">
+              {evento.imagem_url && <img src={evento.imagem_url} alt="" style="border-radius: 8px; margin-bottom: 1rem; aspect-ratio: 16/9; object-fit: cover;" />}
+              <h3>{evento.titulo}</h3>
+              <p>{evento.descricao}</p>
+              <div class="cartao__rodape" style="flex-direction: column; align-items: flex-start; gap: 0.25rem;">
+                <span>📅 {fmt.format(new Date(evento.data_inicio))}</span>
+                <span>🕒 {fmtHora.format(new Date(evento.data_inicio))}</span>
+                <span>📍 {evento.local}</span>
+              </div>
+              <a href={`/eventos/${evento.id}/`} class="cartao__ligacao" aria-label={`Ver detalhes de ${evento.titulo}`}></a>
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
+
+    {passados.length > 0 && (
+      <section style="margin-top: 4rem;">
+        <details>
+          <summary style="cursor: pointer; font-size: 1.25rem; font-weight: bold; margin-bottom: 1rem; color: var(--petroleo);">
+            Eventos Anteriores ({passados.length})
+          </summary>
+          <div class="grelha grelha--3">
+            {passados.map(evento => (
+              <article class="cartao" style="opacity: 0.8;">
+                <h3>{evento.titulo}</h3>
+                <p>{evento.descricao}</p>
+                <div class="cartao__rodape">
+                  <span>📅 {fmt.format(new Date(evento.data_inicio))}</span>
+                </div>
+                <a href={`/eventos/${evento.id}/`} class="cartao__ligacao" aria-label={`Ver detalhes de ${evento.titulo}`}></a>
+              </article>
+            ))}
+          </div>
+        </details>
+      </section>
+    )}
+  </main>
+</Pagina>
