@@ -1,30 +1,122 @@
+
 ---
 import { getCollection, render } from 'astro:content';
+import { createClient } from '@supabase/supabase-js';
 import Pagina from '../../layouts/Pagina.astro';
 import Icone from '../../components/Icone.astro';
 import { mesAno } from '../../data/datas';
 
-export async function getStaticPaths() {
-  const noticias = await getCollection('noticias');
-  return noticias.map((noticia) => ({ params: { slug: noticia.id }, props: { noticia } }));
+export const prerender = false;
+
+const slug = Astro.params.slug;
+
+if (!slug) {
+  return Astro.redirect('/noticias/');
 }
 
-const { noticia } = Astro.props;
-const d = noticia.data;
-const { Content } = await render(noticia);
+// Primeiro procuramos nas notícias antigas em Markdown.
+const noticiasAntigas = await getCollection('noticias');
+const noticiaAntiga = noticiasAntigas.find((n) => n.id === slug);
+
+let titulo = '';
+let resumo = '';
+let categoria = 'Notícias';
+let data = new Date();
+let imagem: string | null = null;
+let autor: string | null = null;
+let conteudo: string | null = null;
+let Content: any = null;
+
+if (noticiaAntiga) {
+  const d = noticiaAntiga.data;
+
+  titulo = d.titulo;
+  resumo = d.resumo;
+  categoria = d.categoria;
+  data = d.data;
+  imagem = d.imagem ?? null;
+  autor = d.autor ?? null;
+
+  const resultado = await render(noticiaAntiga);
+  Content = resultado.Content;
+} else {
+  // Se não existir em Markdown, procuramos no Supabase.
+  const supabase = createClient(
+    import.meta.env.PUBLIC_SUPABASE_URL,
+    import.meta.env.PUBLIC_SUPABASE_PUBLISHABLE_KEY,
+    {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+      },
+    }
+  );
+
+  const { data: noticia, error } = await supabase
+    .from('noticias')
+    .select(
+      'id, titulo, resumo, conteudo, imagem_url, criado_em, publicada'
+    )
+    .eq('id', slug)
+    .eq('publicada', true)
+    .maybeSingle();
+
+  if (error) {
+    console.error('Erro ao carregar notícia:', error.message);
+  }
+
+  if (!noticia) {
+    return new Response('Notícia não encontrada', {
+      status: 404,
+      headers: {
+        'Content-Type': 'text/plain; charset=utf-8',
+      },
+    });
+  }
+
+  titulo = noticia.titulo;
+  resumo = noticia.resumo ?? '';
+  conteudo = noticia.conteudo;
+  imagem = noticia.imagem_url;
+  data = new Date(noticia.criado_em);
+}
 ---
 
-<Pagina titulo={d.titulo} descricao={d.resumo} migalhas={[{ nome: 'Notícias', url: '/noticias/' }]}>
+<Pagina
+  titulo={titulo}
+  descricao={resumo}
+  migalhas={[{ nome: 'Notícias', url: '/noticias/' }]}
+>
   <p slot="antes-titulo" class="meta">
-    {d.categoria} · <time datetime={d.data.toISOString().slice(0, 10)}>{mesAno(d.data)}</time>
+    {categoria} ·
+    <time datetime={data.toISOString().slice(0, 10)}>
+      {mesAno(data)}
+    </time>
   </p>
+
   <article class="seccao">
     <div class="contentor">
       <div class="prosa">
-        {d.imagem && <img src={d.imagem} alt="" />}
-        <Content />
-        {d.autor && <p class="autor">Publicado por {d.autor}</p>}
-        <p><a href="/noticias/" class="ligacao-seta">Todas as notícias <Icone nome="seta" tamanho={18} /></a></p>
+        {imagem && <img src={imagem} alt="" />}
+
+        {
+          Content ? (
+            <Content />
+          ) : (
+            <div class="conteudo-noticia">
+              {conteudo}
+            </div>
+          )
+        }
+
+        {autor && <p class="autor">Publicado por {autor}</p>}
+
+        <p>
+          <a href="/noticias/" class="ligacao-seta">
+            Todas as notícias
+            <Icone nome="seta" tamanho={18} />
+          </a>
+        </p>
       </div>
     </div>
   </article>
@@ -37,9 +129,18 @@ const { Content } = await render(noticia);
     color: var(--verde);
     font-weight: 600;
   }
+
   .prosa {
     font-size: 1.08rem;
   }
+
+  .conteudo-noticia {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    line-height: 1.8;
+    margin-bottom: 2rem;
+  }
+
   .autor {
     margin-top: 2.5rem;
     padding-top: 1.25rem;

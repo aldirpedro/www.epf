@@ -1,0 +1,98 @@
+
+---
+// src/pages/eventos/[id].astro
+import Pagina from '../../layouts/Pagina.astro';
+import { criarSupabaseServer } from '../../lib/supabase/server';
+
+export const prerender = false;
+
+const { id } = Astro.params;
+
+if (!id || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+  return Astro.redirect('/404');
+}
+
+const supabase = criarSupabaseServer(Astro);
+
+// Consultar apenas eventos publicados
+const { data: evento, error } = await supabase
+  .from('eventos')
+  .select('id, titulo, descricao, data_inicio, data_fim, local, imagem_url')
+  .eq('id', id)
+  .eq('publicado', true)
+  .maybeSingle();
+
+if (error || !evento) {
+  return Astro.redirect('/404');
+}
+
+const fmt = new Intl.DateTimeFormat('pt-PT', {
+  weekday: 'long',
+  day: '2-digit',
+  month: 'long',
+  year: 'numeric',
+});
+
+const fmtHora = new Intl.DateTimeFormat('pt-PT', {
+  hour: '2-digit',
+  minute: '2-digit',
+});
+
+const dataInicio = new Date(evento.data_inicio);
+const dataFim = evento.data_fim ? new Date(evento.data_fim) : null;
+
+const descricao = evento.descricao ?? '';
+---
+
+<Pagina titulo={evento.titulo} descricao={descricao.substring(0, 150)}>
+  <header class="topo-pagina">
+    <div class="contentor">
+      <ul class="migalhas">
+        <li><a href="/">Início</a></li>
+        <li><a href="/eventos/">Eventos</a></li>
+        <li>{evento.titulo}</li>
+      </ul>
+      <h1>{evento.titulo}</h1>
+    </div>
+  </header>
+
+  <main class="contentor seccao duas-colunas">
+    <article class="prosa">
+      {evento.imagem_url && (
+        <img
+          src={evento.imagem_url}
+          alt={evento.titulo}
+          style="border-radius: var(--raio); margin-bottom: 2rem; width: 100%; aspect-ratio: 16/9; object-fit: cover;"
+        />
+      )}
+
+      <p>{descricao}</p>
+    </article>
+
+    <aside class="painel">
+      <h3>Detalhes do Evento</h3>
+
+      <dl>
+        <dt>Data</dt>
+        <dd style="text-transform: capitalize;">
+          {fmt.format(dataInicio)}
+        </dd>
+
+        <dt>Hora</dt>
+        <dd>
+          {fmtHora.format(dataInicio)}
+          {dataFim && ` - ${fmtHora.format(dataFim)}`}
+        </dd>
+
+        <dt>Local</dt>
+        <dd>{evento.local}</dd>
+      </dl>
+
+      <div style="margin-top: 2rem;">
+        <a href="/eventos/" class="botao botao--contorno">
+          ← Voltar aos eventos
+        </a>
+      </div>
+    </aside>
+  </main>
+</Pagina>

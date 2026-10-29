@@ -1,0 +1,591 @@
+
+---
+import AdminLayout from "../../../../layouts/AdminLayout.astro";
+import { criarSupabaseServer } from "../../../../lib/supabase/server";
+
+export const prerender = false;
+
+Astro.response.headers.set("Cache-Control", "private, no-store");
+
+const supabase = criarSupabaseServer(Astro);
+
+const {
+  data: { user },
+  error: erroAutenticacao,
+} = await supabase.auth.getUser();
+
+if (erroAutenticacao || !user) {
+  return Astro.redirect("/admin/login");
+}
+
+const { data: perfil, error: erroPerfil } = await supabase
+  .from("perfis")
+  .select("nome, perfil, ativo")
+  .eq("id", user.id)
+  .single();
+
+if (erroPerfil || !perfil?.ativo) {
+  return Astro.redirect("/admin");
+}
+
+// Verificar a permissão individual de edição.
+const {
+  data: permissaoEditar,
+  error: erroPermissaoEditar,
+} = await supabase.rpc("tem_permissao", {
+  p_recurso: "noticias",
+  p_acao: "editar",
+});
+
+if (
+  erroPermissaoEditar ||
+  permissaoEditar !== true
+) {
+  return Astro.redirect("/admin/noticias/");
+}
+
+// A publicação é uma permissão independente da edição.
+const {
+  data: permissaoPublicar,
+  error: erroPermissaoPublicar,
+} = await supabase.rpc("tem_permissao", {
+  p_recurso: "noticias",
+  p_acao: "publicar",
+});
+
+const podePublicar =
+  !erroPermissaoPublicar &&
+  permissaoPublicar === true;
+
+const nome = perfil.nome || "Utilizador";
+
+const nomesCargos: Record<string, string> = {
+  super_admin: "Super Administrador",
+  coordenador: "Coordenador",
+  audiovisuais: "Audiovisuais",
+  secretaria: "Secretaria",
+};
+
+const nomeCargo =
+  nomesCargos[perfil.perfil] || "Utilizador";
+
+const id = Astro.params.id;
+
+if (!id) {
+  return Astro.redirect("/admin/noticias/");
+}
+
+const { data: noticia, error } = await supabase
+  .from("noticias")
+  .select(
+    "id, titulo, resumo, conteudo, imagem_url, publicada"
+  )
+  .eq("id", id)
+  .single();
+
+if (error || !noticia) {
+  return Astro.redirect("/admin/noticias/");
+}
+
+const erroGuardar = Astro.url.searchParams.has("erro");
+---
+
+<AdminLayout
+  titulo={`Editar Notícia — ${noticia.titulo}`}
+  nome={nome}
+  perfil={nomeCargo}
+  ativo="noticias"
+>
+  <div class="pagina">
+    <a class="voltar" href="/admin/noticias/">
+      ← Voltar às notícias
+    </a>
+
+    <div class="cabecalho">
+      <span class="sobretitulo">
+        GESTÃO DE CONTEÚDOS
+      </span>
+
+      <h1>Editar notícia</h1>
+
+      <p>
+        Altera os dados de
+        <strong>{noticia.titulo}</strong>.
+        Se a notícia estiver publicada, as alterações
+        ficarão disponíveis no site público.
+      </p>
+    </div>
+
+    {
+      erroGuardar && (
+        <div class="mensagem-erro" role="alert">
+          Não foi possível guardar as alterações.
+          Verifica os dados e tenta novamente.
+        </div>
+      )
+    }
+
+    <form
+      class="formulario"
+      action="/admin/noticias/atualizar"
+      method="POST"
+      enctype="multipart/form-data"
+    >
+      <input
+        type="hidden"
+        name="id"
+        value={noticia.id}
+      />
+
+      <div class="formulario-topo">
+        <h2>Informações da notícia</h2>
+
+        <p>
+          Atualiza os campos necessários.
+          Os campos assinalados com * são obrigatórios.
+        </p>
+      </div>
+
+      <div class="campo">
+        <label for="titulo">
+          Título da notícia *
+        </label>
+
+        <input
+          id="titulo"
+          name="titulo"
+          type="text"
+          maxlength="200"
+          value={noticia.titulo}
+          required
+        />
+      </div>
+
+      <div class="campo">
+        <label for="resumo">
+          Resumo
+        </label>
+
+        <textarea
+          id="resumo"
+          name="resumo"
+          rows="3"
+          maxlength="500"
+        >{noticia.resumo ?? ""}</textarea>
+      </div>
+
+      <div class="campo">
+        <label for="conteudo">
+          Conteúdo da notícia *
+        </label>
+
+        <textarea
+          id="conteudo"
+          name="conteudo"
+          rows="12"
+          required
+        >{noticia.conteudo}</textarea>
+      </div>
+
+      <div class="campo">
+        <label>Imagem atual</label>
+
+        {
+          noticia.imagem_url ? (
+            <img
+              class="imagem-atual"
+              src={noticia.imagem_url}
+              alt={`Imagem da notícia: ${noticia.titulo}`}
+            />
+          ) : (
+            <p class="ajuda">
+              Esta notícia não tem imagem.
+            </p>
+          )
+        }
+      </div>
+
+      <div class="campo">
+        <label for="imagem">
+          Substituir imagem
+        </label>
+
+        <input
+          id="imagem"
+          name="imagem"
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+        />
+
+        <p class="ajuda">
+          Deixa este campo vazio para manter a imagem atual.
+          Formatos permitidos: JPG, PNG ou WebP, até 5 MB.
+        </p>
+
+        <img
+          id="preview"
+          class="preview"
+          alt="Pré-visualização da nova imagem"
+          hidden
+        />
+      </div>
+
+      <div class="publicacao">
+        <label
+          class:list={[
+            "checkbox",
+            !podePublicar && "checkbox-bloqueada",
+          ]}
+        >
+          <input
+            type="checkbox"
+            name="publicada"
+            value="true"
+            checked={noticia.publicada}
+            disabled={!podePublicar}
+          />
+
+          <span>
+            <strong>Publicar notícia</strong>
+
+            <small>
+              {
+                podePublicar
+                  ? "Quando esta opção está ativa, a notícia aparece no site público. Se a desativares, fica como rascunho."
+                  : "Não tens permissão para alterar o estado de publicação desta notícia."
+              }
+            </small>
+          </span>
+        </label>
+
+        {
+          !podePublicar && (
+            <input
+              type="hidden"
+              name="publicada"
+              value={String(noticia.publicada)}
+            />
+          )
+        }
+      </div>
+
+      <div class="acoes">
+        <a
+          class="botao-cancelar"
+          href="/admin/noticias/"
+        >
+          Cancelar
+        </a>
+
+        <button
+          type="submit"
+          class="botao-guardar"
+        >
+          Guardar alterações
+        </button>
+      </div>
+    </form>
+  </div>
+
+  <script>
+    const input =
+      document.querySelector<HTMLInputElement>("#imagem");
+
+    const preview =
+      document.querySelector<HTMLImageElement>("#preview");
+
+    let urlAnterior: string | null = null;
+
+    input?.addEventListener("change", () => {
+      if (!preview) return;
+
+      if (urlAnterior) {
+        URL.revokeObjectURL(urlAnterior);
+        urlAnterior = null;
+      }
+
+      const ficheiro = input.files?.[0];
+
+      if (
+        !ficheiro ||
+        !ficheiro.type.startsWith("image/")
+      ) {
+        preview.hidden = true;
+        preview.removeAttribute("src");
+        return;
+      }
+
+      urlAnterior = URL.createObjectURL(ficheiro);
+      preview.src = urlAnterior;
+      preview.hidden = false;
+    });
+
+    window.addEventListener("pagehide", () => {
+      if (urlAnterior) {
+        URL.revokeObjectURL(urlAnterior);
+      }
+    });
+  </script>
+</AdminLayout>
+
+<style>
+  .pagina {
+    max-width: 920px;
+  }
+
+  .voltar {
+    display: inline-block;
+    margin-bottom: 25px;
+    color: #75869a;
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .voltar:hover {
+    color: #267a4b;
+  }
+
+  .cabecalho {
+    margin-bottom: 28px;
+  }
+
+  .sobretitulo {
+    color: #34885c;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+  }
+
+  h1 {
+    margin: 9px 0;
+    color: #152d43;
+    font-size: clamp(28px, 3vw, 36px);
+    letter-spacing: -0.04em;
+  }
+
+  .cabecalho p {
+    margin: 0;
+    color: #75869a;
+    font-size: 14px;
+    line-height: 1.7;
+  }
+
+  .cabecalho strong {
+    color: #25384b;
+  }
+
+  .mensagem-erro {
+    margin-bottom: 22px;
+    padding: 15px 18px;
+    border: 1px solid #fecaca;
+    border-radius: 9px;
+    background: #fff5f5;
+    color: #b91c1c;
+    font-size: 13px;
+  }
+
+  .formulario {
+    overflow: hidden;
+    background: white;
+    border: 1px solid #e4eaf0;
+    border-radius: 14px;
+  }
+
+  .formulario-topo {
+    padding: 26px 30px;
+    border-bottom: 1px solid #e4eaf0;
+  }
+
+  .formulario-topo h2 {
+    margin: 0 0 7px;
+    color: #172f46;
+    font-size: 18px;
+  }
+
+  .formulario-topo p {
+    margin: 0;
+    color: #8291a2;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+
+  .campo {
+    display: grid;
+    gap: 10px;
+    padding: 22px 30px 0;
+  }
+
+  .campo label {
+    color: #25384b;
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  input[type="text"],
+  input[type="file"],
+  textarea {
+    width: 100%;
+    padding: 13px;
+    border: 1px solid #dce5ed;
+    border-radius: 9px;
+    background: white;
+    color: #203247;
+    font: inherit;
+    font-size: 14px;
+  }
+
+  input[type="file"] {
+    border-style: dashed;
+    background: #f8fafc;
+  }
+
+  input:focus,
+  textarea:focus {
+    outline: 2px solid #9bd2b0;
+    outline-offset: 1px;
+    border-color: #267a4b;
+  }
+
+  textarea {
+    resize: vertical;
+  }
+
+  .imagem-atual {
+    display: block;
+    max-width: 100%;
+    max-height: 300px;
+    object-fit: contain;
+    border: 1px solid #e4eaf0;
+    border-radius: 10px;
+  }
+
+  .ajuda {
+    margin: 0;
+    color: #8291a2;
+    font-size: 12px;
+    line-height: 1.6;
+  }
+
+  .preview {
+    display: block;
+    width: 100%;
+    max-height: 350px;
+    object-fit: contain;
+    border-radius: 10px;
+    background: #f1f5f9;
+  }
+
+  .preview[hidden] {
+    display: none;
+  }
+
+  .publicacao {
+    margin: 26px 30px;
+    padding: 20px;
+    border: 1px solid #dcebe2;
+    border-radius: 10px;
+    background: #f7fbf8;
+  }
+
+  .checkbox {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    cursor: pointer;
+  }
+
+  .checkbox-bloqueada {
+    cursor: not-allowed;
+    opacity: 0.7;
+  }
+
+  .checkbox input {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+    margin: 2px 0 0;
+    accent-color: #267a4b;
+  }
+
+  .checkbox span {
+    display: grid;
+    gap: 5px;
+  }
+
+  .checkbox strong {
+    color: #25384b;
+    font-size: 14px;
+  }
+
+  .checkbox small {
+    color: #75869a;
+    font-size: 12px;
+    line-height: 1.5;
+  }
+
+  .acoes {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 12px;
+    padding: 22px 30px;
+    border-top: 1px solid #e4eaf0;
+    background: #fbfcfd;
+  }
+
+  .botao-cancelar,
+  .botao-guardar {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 13px 20px;
+    border-radius: 9px;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  .botao-cancelar {
+    border: 1px solid #dce5ed;
+    background: white;
+    color: #52667b;
+  }
+
+  .botao-cancelar:hover {
+    background: #f1f5f9;
+  }
+
+  .botao-guardar {
+    border: 0;
+    background: #267a4b;
+    color: white;
+    cursor: pointer;
+  }
+
+  .botao-guardar:hover {
+    background: #1d603b;
+  }
+
+  @media (max-width: 600px) {
+    .formulario-topo,
+    .campo {
+      padding-left: 18px;
+      padding-right: 18px;
+    }
+
+    .publicacao {
+      margin-left: 18px;
+      margin-right: 18px;
+    }
+
+    .acoes {
+      flex-direction: column-reverse;
+      padding: 18px;
+    }
+
+    .botao-cancelar,
+    .botao-guardar {
+      width: 100%;
+    }
+  }
+</style>

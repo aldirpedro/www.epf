@@ -1,3 +1,4 @@
+
 // Dados globais do sítio. Alterar aqui reflete-se em todas as páginas.
 
 export const site = {
@@ -49,6 +50,22 @@ export const navegacao: GrupoNav[] = [
     ],
   },
   { nome: 'Notícias', url: '/noticias/' },
+  {
+    nome: 'Eventos',
+    url: '/eventos/',
+    itens: [
+      {
+        nome: 'Todos os eventos',
+        url: '/eventos/',
+        nota: 'Atividades e acontecimentos da escola',
+      },
+      {
+        nome: 'Calendário',
+        url: '/calendario/',
+        nota: 'Consulta os eventos por data',
+      },
+    ],
+  },
   { nome: 'Erasmus+', url: '/erasmus/' },
   {
     nome: 'Comunidade',

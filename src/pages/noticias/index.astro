@@ -1,23 +1,105 @@
+
 ---
 import { getCollection } from 'astro:content';
+import { createClient } from '@supabase/supabase-js';
 import Pagina from '../../layouts/Pagina.astro';
 import CartaoNoticia from '../../components/CartaoNoticia.astro';
 
-const noticias = (await getCollection('noticias')).sort((a, b) => +b.data.data - +a.data.data);
-const categorias = [...new Set(noticias.map((n) => n.data.categoria))];
+export const prerender = false;
+
+// Notícias antigas, guardadas em Markdown.
+const noticiasAntigas = await getCollection('noticias');
+
+// Cliente público do Supabase, sem sessão de administrador.
+const supabase = createClient(
+  import.meta.env.PUBLIC_SUPABASE_URL,
+  import.meta.env.PUBLIC_SUPABASE_PUBLISHABLE_KEY,
+  {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+  }
+);
+
+// Apenas notícias publicadas.
+const { data: noticiasNovas, error } = await supabase
+  .from('noticias')
+  .select('id, titulo, resumo, imagem_url, criado_em, publicada')
+  .eq('publicada', true)
+  .order('criado_em', { ascending: false });
+
+if (error) {
+  console.error('Erro ao carregar notícias públicas:', error.message);
+}
+
+const noticias = [
+  ...noticiasAntigas,
+  ...(noticiasNovas ?? []),
+].sort((a, b) => {
+  const dataA = 'criado_em' in a
+    ? new Date(a.criado_em).getTime()
+    : a.data.data.getTime();
+
+  const dataB = 'criado_em' in b
+    ? new Date(b.criado_em).getTime()
+    : b.data.data.getTime();
+
+  return dataB - dataA;
+});
+
+const categorias = [
+  ...new Set(
+    noticias.map((n) =>
+      'criado_em' in n ? 'Notícias' : n.data.categoria
+    )
+  ),
+];
 ---
 
-<Pagina titulo="Notícias" intro="A vida da escola, o emprego e a formação, e os projetos no país e na Europa.">
+<Pagina
+  titulo="Notícias"
+  intro="A vida da escola, o emprego e a formação, e os projetos no país e na Europa."
+>
   <section class="seccao">
     <div class="contentor">
-      <div class="filtros" role="group" aria-label="Filtrar por categoria">
-        <button type="button" class="filtro" aria-pressed="true" data-categoria="">Todas</button>
-        {categorias.map((c) => <button type="button" class="filtro" aria-pressed="false" data-categoria={c}>{c}</button>)}
+      <div
+        class="filtros"
+        role="group"
+        aria-label="Filtrar por categoria"
+      >
+        <button
+          type="button"
+          class="filtro"
+          aria-pressed="true"
+          data-categoria=""
+        >
+          Todas
+        </button>
+
+        {
+          categorias.map((c) => (
+            <button
+              type="button"
+              class="filtro"
+              aria-pressed="false"
+              data-categoria={c}
+            >
+              {c}
+            </button>
+          ))
+        }
       </div>
+
       <div class="grelha grelha--3">
         {
           noticias.map((n) => (
-            <div data-categoria={n.data.categoria} style="display:contents">
+            <div
+              data-categoria={
+                'criado_em' in n ? 'Notícias' : n.data.categoria
+              }
+              style="display:contents"
+            >
               <CartaoNoticia noticia={n} />
             </div>
           ))
@@ -29,13 +111,24 @@ const categorias = [...new Set(noticias.map((n) => n.data.categoria))];
 
 <script>
   const filtros = document.querySelectorAll<HTMLButtonElement>('.filtro');
-  const itens = document.querySelectorAll<HTMLElement>('.grelha > [data-categoria]');
+
+  const itens = document.querySelectorAll<HTMLElement>(
+    '.grelha > [data-categoria]'
+  );
+
   filtros.forEach((f) =>
     f.addEventListener('click', () => {
-      filtros.forEach((x) => x.setAttribute('aria-pressed', String(x === f)));
-      const c = f.dataset.categoria;
-      itens.forEach((i) => (i.hidden = !!c && i.dataset.categoria !== c));
-    }),
+      filtros.forEach((x) =>
+        x.setAttribute('aria-pressed', String(x === f))
+      );
+
+      const categoria = f.dataset.categoria;
+
+      itens.forEach((item) => {
+        item.hidden =
+          !!categoria && item.dataset.categoria !== categoria;
+      });
+    })
   );
 </script>
 
@@ -46,6 +139,7 @@ const categorias = [...new Set(noticias.map((n) => n.data.categoria))];
     gap: 0.5rem;
     margin-bottom: 2rem;
   }
+
   .filtro {
     padding: 0.5rem 1rem;
     border: 1.5px solid var(--linha);
@@ -57,11 +151,13 @@ const categorias = [...new Set(noticias.map((n) => n.data.categoria))];
     color: var(--petroleo);
     cursor: pointer;
   }
+
   .filtro[aria-pressed='true'] {
     background: var(--petroleo);
     border-color: var(--petroleo);
     color: #fff;
   }
+
   [hidden] {
     display: none !important;
   }

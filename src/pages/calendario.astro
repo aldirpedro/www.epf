@@ -1,0 +1,383 @@
+
+---
+import Pagina from '../layouts/Pagina.astro';
+import { criarSupabaseServer } from '../lib/supabase/server';
+
+export const prerender = false;
+
+const supabase = criarSupabaseServer(Astro);
+
+// Consultar apenas os eventos publicados.
+const { data, error } = await supabase
+  .from('eventos')
+  .select('id, titulo, descricao, data_inicio, local')
+  .eq('publicado', true)
+  .order('data_inicio', { ascending: true });
+
+const eventos = data ?? [];
+
+// Preparar os dados para o calendário.
+const dadosEventos = eventos.map((evento) => ({
+  id: evento.id,
+  titulo: evento.titulo,
+  data: new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Lisbon',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date(evento.data_inicio)),
+  local: evento.local ?? '',
+  resumo: evento.descricao ?? '',
+}));
+---
+
+<Pagina
+  titulo="Calendário Escolar"
+  descricao="Consulta as atividades da Escola Profissional do Fundão por mês."
+>
+  <main class="contentor seccao">
+    {
+      error ? (
+        <p role="alert">
+          Não foi possível carregar os eventos do calendário.
+          Tenta novamente mais tarde.
+        </p>
+      ) : (
+        <div class="painel calendario-painel">
+          <div class="calendario-navegacao">
+            <button
+              id="btn-prev"
+              type="button"
+              class="botao botao--contorno"
+              aria-label="Mês anterior"
+            >
+              ‹
+            </button>
+
+            <h2 id="mes-ano" aria-live="polite"></h2>
+
+            <button
+              id="btn-next"
+              type="button"
+              class="botao botao--contorno"
+              aria-label="Mês seguinte"
+            >
+              ›
+            </button>
+          </div>
+
+          <div class="calendario-semana" aria-hidden="true">
+            <span>Dom</span>
+            <span>Seg</span>
+            <span>Ter</span>
+            <span>Qua</span>
+            <span>Qui</span>
+            <span>Sex</span>
+            <span>Sáb</span>
+          </div>
+
+          <div
+            id="grelha-calendario"
+            class="calendario-grelha"
+            aria-label="Dias do mês"
+          ></div>
+
+          <div
+            id="painel-dia"
+            class="calendario-detalhes"
+            aria-live="polite"
+          ></div>
+        </div>
+      )
+    }
+  </main>
+
+  {
+    !error && (
+      <script
+        type="application/json"
+        id="dados-eventos"
+        set:html={JSON.stringify(dadosEventos).replace(/</g, '\\u003c')}
+      />
+    )
+  }
+
+  <script>
+    type EventoCalendario = {
+      id: string;
+      titulo: string;
+      data: string;
+      local: string;
+      resumo: string;
+    };
+
+    const elementoDados = document.getElementById('dados-eventos');
+
+    if (elementoDados) {
+      const eventos: EventoCalendario[] = JSON.parse(
+        elementoDados.textContent ?? '[]'
+      );
+
+      const meses = [
+        'Janeiro',
+        'Fevereiro',
+        'Março',
+        'Abril',
+        'Maio',
+        'Junho',
+        'Julho',
+        'Agosto',
+        'Setembro',
+        'Outubro',
+        'Novembro',
+        'Dezembro',
+      ];
+
+      const grelha = document.getElementById('grelha-calendario');
+      const tituloMes = document.getElementById('mes-ano');
+      const painelDia = document.getElementById('painel-dia');
+      const botaoAnterior = document.getElementById('btn-prev');
+      const botaoSeguinte = document.getElementById('btn-next');
+
+      let dataAtual = new Date();
+      dataAtual.setDate(1);
+
+      function mostrarDetalhesDia(
+        dia: number,
+        lista: EventoCalendario[]
+      ) {
+        if (!painelDia) return;
+
+        const mes = dataAtual.getMonth();
+
+        painelDia.replaceChildren();
+
+        const titulo = document.createElement('h3');
+        titulo.textContent = `Eventos a ${dia} de ${meses[mes]}`;
+        titulo.style.marginBottom = '1rem';
+
+        painelDia.appendChild(titulo);
+
+        for (const evento of lista) {
+          const ligacao = document.createElement('a');
+          ligacao.href = `/eventos/${encodeURIComponent(evento.id)}/`;
+          ligacao.className = 'calendario-evento';
+
+          const nome = document.createElement('strong');
+          nome.textContent = evento.titulo;
+          nome.className = 'calendario-evento-titulo';
+
+          const local = document.createElement('p');
+          local.textContent = `📍 ${evento.local || 'Local a definir'}`;
+          local.className = 'calendario-evento-local';
+
+          ligacao.append(nome, local);
+          painelDia.appendChild(ligacao);
+        }
+      }
+
+      function renderizarCalendario() {
+        if (!grelha || !tituloMes || !painelDia) return;
+
+        const ano = dataAtual.getFullYear();
+        const mes = dataAtual.getMonth();
+
+        tituloMes.textContent = `${meses[mes]} ${ano}`;
+
+        grelha.replaceChildren();
+        painelDia.replaceChildren();
+
+        const primeiroDiaSemana = new Date(ano, mes, 1).getDay();
+        const totalDias = new Date(ano, mes + 1, 0).getDate();
+
+        for (let i = 0; i < primeiroDiaSemana; i++) {
+          const espaco = document.createElement('div');
+          espaco.setAttribute('aria-hidden', 'true');
+          grelha.appendChild(espaco);
+        }
+
+        for (let dia = 1; dia <= totalDias; dia++) {
+          const dataStr =
+            `${ano}-${String(mes + 1).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
+
+          const eventosDoDia = eventos.filter(
+            (evento) => evento.data === dataStr
+          );
+
+          const temEventos = eventosDoDia.length > 0;
+
+          const elemento = document.createElement(
+            temEventos ? 'button' : 'div'
+          );
+
+          elemento.className = temEventos
+            ? 'calendario-dia calendario-dia--evento'
+            : 'calendario-dia';
+
+          const numero = document.createElement('span');
+          numero.textContent = String(dia);
+          elemento.appendChild(numero);
+
+          if (temEventos) {
+            const botao = elemento as HTMLButtonElement;
+
+            botao.type = 'button';
+            botao.setAttribute(
+              'aria-label',
+              `${dia} de ${meses[mes]}: ${eventosDoDia.length} evento(s)`
+            );
+
+            const indicador = document.createElement('span');
+            indicador.className = 'calendario-indicador';
+            indicador.setAttribute('aria-hidden', 'true');
+
+            botao.appendChild(indicador);
+
+            botao.addEventListener('click', () => {
+              mostrarDetalhesDia(dia, eventosDoDia);
+            });
+          }
+
+          grelha.appendChild(elemento);
+        }
+      }
+
+      botaoAnterior?.addEventListener('click', () => {
+        dataAtual.setMonth(dataAtual.getMonth() - 1);
+        renderizarCalendario();
+      });
+
+      botaoSeguinte?.addEventListener('click', () => {
+        dataAtual.setMonth(dataAtual.getMonth() + 1);
+        renderizarCalendario();
+      });
+
+      renderizarCalendario();
+    }
+  </script>
+
+  <style>
+    .calendario-painel {
+      background: #fff;
+      padding: 2rem;
+    }
+
+    .calendario-navegacao {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+
+    .calendario-navegacao h2 {
+      margin: 0;
+      text-transform: capitalize;
+      text-align: center;
+    }
+
+    .calendario-semana,
+    .calendario-grelha {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .calendario-semana {
+      text-align: center;
+      font-weight: bold;
+      margin-bottom: 1rem;
+      color: var(--texto-suave);
+    }
+
+    .calendario-dia {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-width: 0;
+      min-height: 76px;
+      padding: 1rem;
+      border-radius: var(--raio);
+      background: var(--fundo-suave);
+      border: 1px solid var(--linha);
+      color: inherit;
+      font: inherit;
+    }
+
+    .calendario-dia--evento {
+      background: var(--verde-claro);
+      border-color: var(--verde);
+      cursor: pointer;
+      font-weight: bold;
+    }
+
+    .calendario-dia--evento:hover {
+      filter: brightness(0.97);
+    }
+
+    .calendario-dia--evento:focus-visible {
+      outline: 3px solid var(--petroleo);
+      outline-offset: 2px;
+    }
+
+    .calendario-indicador {
+      width: 8px;
+      height: 8px;
+      background: var(--verde-escuro);
+      border-radius: 50%;
+      margin-top: 8px;
+    }
+
+    .calendario-detalhes {
+      margin-top: 2rem;
+    }
+
+    .calendario-detalhes:empty {
+      display: none;
+    }
+
+    .calendario-evento {
+      display: block;
+      padding: 1rem;
+      background: #fff;
+      border: 1px solid var(--linha);
+      border-radius: var(--raio);
+      margin-bottom: 1rem;
+      text-decoration: none;
+      color: inherit;
+    }
+
+    .calendario-evento-titulo {
+      display: block;
+      color: var(--petroleo);
+      font-size: 1.1rem;
+    }
+
+    .calendario-evento-local {
+      margin: 0.5rem 0 0;
+      font-size: 0.9rem;
+    }
+
+    @media (max-width: 640px) {
+      .calendario-painel {
+        padding: 0.75rem;
+      }
+
+      .calendario-semana,
+      .calendario-grelha {
+        gap: 4px;
+      }
+
+      .calendario-dia {
+        min-height: 50px;
+        padding: 0.35rem;
+        font-size: 0.85rem;
+      }
+
+      .calendario-navegacao h2 {
+        font-size: 1.1rem;
+      }
+    }
+  </style>
+</Pagina>

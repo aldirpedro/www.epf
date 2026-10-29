@@ -1,0 +1,678 @@
+
+---
+import AdminLayout from "../../../../layouts/AdminLayout.astro";
+import { criarSupabaseServer } from "../../../../lib/supabase/server";
+
+export const prerender = false;
+
+Astro.response.headers.set("Cache-Control", "private, no-store");
+
+const supabase = criarSupabaseServer(Astro);
+
+const {
+  data: { user },
+  error: erroAutenticacao,
+} = await supabase.auth.getUser();
+
+if (erroAutenticacao || !user) {
+  return Astro.redirect("/admin/login");
+}
+
+const { data: perfil, error: erroPerfil } = await supabase
+  .from("perfis")
+  .select("nome, perfil, ativo")
+  .eq("id", user.id)
+  .single();
+
+if (erroPerfil || !perfil?.ativo) {
+  return Astro.redirect("/admin");
+}
+
+const [resultadoEditar, resultadoPublicar] = await Promise.all([
+  supabase.rpc("tem_permissao", {
+    p_recurso: "eventos",
+    p_acao: "editar",
+  }),
+  supabase.rpc("tem_permissao", {
+    p_recurso: "eventos",
+    p_acao: "publicar",
+  }),
+]);
+
+if (resultadoEditar.error || resultadoEditar.data !== true) {
+  return Astro.redirect("/admin/eventos/");
+}
+
+const podePublicar =
+  !resultadoPublicar.error &&
+  resultadoPublicar.data === true;
+
+const id = Astro.params.id ?? "";
+
+const idValido =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+
+if (!idValido) {
+  return Astro.redirect("/admin/eventos/");
+}
+
+const { data: evento, error: erroEvento } = await supabase
+  .from("eventos")
+  .select(
+    "id, titulo, descricao, data_inicio, data_fim, local, imagem_url, publicado"
+  )
+  .eq("id", id)
+  .single();
+
+if (erroEvento || !evento) {
+  return Astro.redirect("/admin/eventos/");
+}
+
+const nome = perfil.nome || "Utilizador";
+
+const nomesCargos: Record<string, string> = {
+  super_admin: "Super Administrador",
+  coordenador: "Coordenador",
+  audiovisuais: "Audiovisuais",
+  secretaria: "Secretaria",
+};
+
+const nomeCargo =
+  nomesCargos[perfil.perfil] || "Utilizador";
+
+// Converter as datas UTC para os campos datetime-local,
+// respeitando a hora de Portugal continental.
+const formatarDataFormulario = (valor: string | null) => {
+  if (!valor) return "";
+
+  const data = new Date(valor);
+
+  if (Number.isNaN(data.getTime())) return "";
+
+  const partes = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/Lisbon",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(data);
+
+  const obter = (tipo: string) =>
+    partes.find((parte) => parte.type === tipo)?.value ?? "";
+
+  return (
+    `${obter("year")}-${obter("month")}-${obter("day")}` +
+    `T${obter("hour")}:${obter("minute")}`
+  );
+};
+
+const erro = Astro.url.searchParams.has("erro");
+---
+
+<AdminLayout
+  titulo="Editar Evento"
+  nome={nome}
+  perfil={nomeCargo}
+  ativo="eventos"
+>
+  <div class="pagina">
+    <a class="voltar" href="/admin/eventos/">
+      ← Voltar aos eventos
+    </a>
+
+    <div class="cabecalho">
+      <span class="sobretitulo">
+        GESTÃO DE CONTEÚDOS
+      </span>
+
+      <h1>Editar evento</h1>
+
+      <p>
+        Atualiza as informações do evento.
+        As alterações serão refletidas no website da escola.
+      </p>
+    </div>
+
+    {
+      erro && (
+        <div class="erro" role="alert">
+          Não foi possível guardar as alterações.
+          Verifica os dados e tenta novamente.
+        </div>
+      )
+    }
+
+    <form
+      class="formulario"
+      action="/admin/eventos/atualizar"
+      method="POST"
+      enctype="multipart/form-data"
+    >
+      <input type="hidden" name="id" value={evento.id} />
+
+      <div class="formulario-topo">
+        <h2>Informações do evento</h2>
+
+        <p>
+          Os campos assinalados com * são obrigatórios.
+        </p>
+      </div>
+
+      <div class="campo">
+        <label for="titulo">
+          Título do evento *
+        </label>
+
+        <input
+          id="titulo"
+          name="titulo"
+          type="text"
+          maxlength="200"
+          value={evento.titulo}
+          required
+        />
+      </div>
+
+      <div class="campo">
+        <label for="descricao">
+          Descrição do evento *
+        </label>
+
+        <textarea
+          id="descricao"
+          name="descricao"
+          rows="7"
+          required
+        >{evento.descricao}</textarea>
+      </div>
+
+      <div class="linha-campos">
+        <div class="campo">
+          <label for="data_inicio">
+            Data e hora de início *
+          </label>
+
+          <input
+            id="data_inicio"
+            name="data_inicio"
+            type="datetime-local"
+            value={formatarDataFormulario(evento.data_inicio)}
+            required
+          />
+        </div>
+
+        <div class="campo">
+          <label for="data_fim">
+            Data e hora de fim
+          </label>
+
+          <input
+            id="data_fim"
+            name="data_fim"
+            type="datetime-local"
+            value={formatarDataFormulario(evento.data_fim)}
+          />
+
+          <p class="ajuda">
+            Opcional. Se preenchida, deve ser
+            posterior à data de início.
+          </p>
+        </div>
+      </div>
+
+      <div class="campo">
+        <label for="local">
+          Local do evento
+        </label>
+
+        <input
+          id="local"
+          name="local"
+          type="text"
+          maxlength="200"
+          value={evento.local ?? ""}
+          placeholder="Ex.: Auditório da EPF"
+        />
+      </div>
+
+      <div class="campo">
+        <label for="imagem">
+          Imagem do evento
+        </label>
+
+        {
+          evento.imagem_url && (
+            <div class="imagem-atual">
+              <span>Imagem atual</span>
+
+              <img
+                src={evento.imagem_url}
+                alt={`Imagem atual do evento ${evento.titulo}`}
+                loading="lazy"
+              />
+            </div>
+          )
+        }
+
+        <input
+          id="imagem"
+          name="imagem"
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+        />
+
+        <p class="ajuda">
+          Deixa este campo vazio para manter a imagem atual.
+          Para a substituir, seleciona um ficheiro JPG,
+          PNG ou WebP, até 5 MB.
+        </p>
+
+        <img
+          id="preview"
+          class="preview"
+          alt="Pré-visualização da nova imagem"
+          hidden
+        />
+      </div>
+
+      <div class="publicacao">
+        <label
+          class:list={[
+            "checkbox",
+            !podePublicar && "checkbox-bloqueada",
+          ]}
+        >
+          <input
+            type="checkbox"
+            name="publicado"
+            value="true"
+            checked={evento.publicado}
+            disabled={!podePublicar}
+          />
+
+          <span>
+            <strong>Publicar evento</strong>
+
+            <small>
+              {
+                podePublicar
+                  ? "Ativa ou desativa esta opção para controlar a publicação do evento."
+                  : "Não tens permissão para alterar a publicação. O estado atual será mantido."
+              }
+            </small>
+          </span>
+        </label>
+      </div>
+
+      <div class="acoes">
+        <a
+          class="botao-cancelar"
+          href="/admin/eventos/"
+        >
+          Cancelar
+        </a>
+
+        <button
+          type="submit"
+          class="botao-guardar"
+        >
+          Guardar alterações
+        </button>
+      </div>
+    </form>
+  </div>
+</AdminLayout>
+
+<script>
+  const input =
+    document.querySelector<HTMLInputElement>("#imagem");
+
+  const preview =
+    document.querySelector<HTMLImageElement>("#preview");
+
+  const inicio =
+    document.querySelector<HTMLInputElement>("#data_inicio");
+
+  const fim =
+    document.querySelector<HTMLInputElement>("#data_fim");
+
+  let urlAnterior: string | null = null;
+
+  input?.addEventListener("change", () => {
+    if (!preview) return;
+
+    if (urlAnterior) {
+      URL.revokeObjectURL(urlAnterior);
+      urlAnterior = null;
+    }
+
+    const ficheiro = input.files?.[0];
+
+    if (
+      !ficheiro ||
+      !["image/jpeg", "image/png", "image/webp"].includes(
+        ficheiro.type
+      )
+    ) {
+      preview.hidden = true;
+      preview.removeAttribute("src");
+      return;
+    }
+
+    urlAnterior = URL.createObjectURL(ficheiro);
+    preview.src = urlAnterior;
+    preview.hidden = false;
+  });
+
+  function validarDatas() {
+    if (!inicio || !fim) return;
+
+    fim.min = inicio.value;
+
+    if (
+      inicio.value &&
+      fim.value &&
+      fim.value < inicio.value
+    ) {
+      fim.setCustomValidity(
+        "A data de fim não pode ser anterior à data de início."
+      );
+    } else {
+      fim.setCustomValidity("");
+    }
+  }
+
+  inicio?.addEventListener("change", validarDatas);
+  fim?.addEventListener("change", validarDatas);
+
+  validarDatas();
+
+  window.addEventListener("pagehide", () => {
+    if (urlAnterior) {
+      URL.revokeObjectURL(urlAnterior);
+    }
+  });
+</script>
+
+<style>
+  .pagina {
+    max-width: 920px;
+  }
+
+  .voltar {
+    display: inline-block;
+    margin-bottom: 25px;
+    color: #75869a;
+    font-size: 13px;
+    font-weight: 600;
+    text-decoration: none;
+  }
+
+  .voltar:hover {
+    color: #267a4b;
+  }
+
+  .cabecalho {
+    margin-bottom: 28px;
+  }
+
+  .sobretitulo {
+    color: #34885c;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+  }
+
+  h1 {
+    margin: 9px 0;
+    color: #152d43;
+    font-size: clamp(28px, 3vw, 36px);
+    letter-spacing: -0.04em;
+  }
+
+  .cabecalho p {
+    margin: 0;
+    color: #75869a;
+    font-size: 14px;
+    line-height: 1.7;
+  }
+
+  .formulario {
+    overflow: hidden;
+    background: white;
+    border: 1px solid #e4eaf0;
+    border-radius: 14px;
+  }
+
+  .formulario-topo {
+    padding: 26px 30px;
+    border-bottom: 1px solid #e4eaf0;
+  }
+
+  .formulario-topo h2 {
+    margin: 0 0 7px;
+    color: #172f46;
+    font-size: 18px;
+  }
+
+  .formulario-topo p {
+    margin: 0;
+    color: #8291a2;
+    font-size: 13px;
+  }
+
+  .campo {
+    display: grid;
+    gap: 10px;
+    padding: 22px 30px 0;
+  }
+
+  .campo label {
+    color: #25384b;
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  input[type="text"],
+  input[type="datetime-local"],
+  input[type="file"],
+  textarea {
+    width: 100%;
+    min-width: 0;
+    padding: 13px;
+    border: 1px solid #dce5ed;
+    border-radius: 9px;
+    background: white;
+    color: #203247;
+    font: inherit;
+    font-size: 14px;
+  }
+
+  input:focus,
+  textarea:focus {
+    outline: 2px solid #9bd2b0;
+    outline-offset: 1px;
+    border-color: #267a4b;
+  }
+
+  textarea {
+    resize: vertical;
+  }
+
+  input[type="file"] {
+    border-style: dashed;
+    background: #f8fafc;
+  }
+
+  .linha-campos {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .ajuda {
+    margin: 0;
+    color: #8291a2;
+    font-size: 12px;
+    line-height: 1.5;
+  }
+
+  .imagem-atual {
+    display: grid;
+    gap: 10px;
+  }
+
+  .imagem-atual span {
+    color: #75869a;
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  .imagem-atual img {
+    display: block;
+    width: 100%;
+    max-height: 350px;
+    object-fit: contain;
+    border-radius: 10px;
+    background: #f1f5f9;
+  }
+
+  .preview {
+    width: 100%;
+    max-height: 350px;
+    object-fit: contain;
+    border-radius: 10px;
+    background: #f1f5f9;
+  }
+
+  .preview[hidden] {
+    display: none;
+  }
+
+  .publicacao {
+    margin: 26px 30px;
+    padding: 20px;
+    border: 1px solid #dcebe2;
+    border-radius: 10px;
+    background: #f7fbf8;
+  }
+
+  .checkbox {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    cursor: pointer;
+  }
+
+  .checkbox-bloqueada {
+    cursor: not-allowed;
+    opacity: 0.7;
+  }
+
+  .checkbox input {
+    width: 18px;
+    height: 18px;
+    margin: 2px 0 0;
+    accent-color: #267a4b;
+  }
+
+  .checkbox span {
+    display: grid;
+    gap: 5px;
+  }
+
+  .checkbox strong {
+    color: #25384b;
+    font-size: 14px;
+  }
+
+  .checkbox small {
+    color: #75869a;
+    font-size: 12px;
+    line-height: 1.5;
+  }
+
+  .acoes {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 12px;
+    padding: 22px 30px;
+    border-top: 1px solid #e4eaf0;
+    background: #fbfcfd;
+  }
+
+  .botao-cancelar,
+  .botao-guardar {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 13px 20px;
+    border-radius: 9px;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 700;
+    text-decoration: none;
+  }
+
+  .botao-cancelar {
+    border: 1px solid #dce5ed;
+    background: white;
+    color: #52667b;
+  }
+
+  .botao-cancelar:hover {
+    background: #f1f5f9;
+  }
+
+  .botao-guardar {
+    border: 0;
+    background: #267a4b;
+    color: white;
+    cursor: pointer;
+  }
+
+  .botao-guardar:hover {
+    background: #1d603b;
+  }
+
+  .erro {
+    margin-bottom: 22px;
+    padding: 15px 18px;
+    border: 1px solid #fecaca;
+    border-radius: 9px;
+    background: #fff5f5;
+    color: #b91c1c;
+    font-size: 13px;
+  }
+
+  @media (max-width: 600px) {
+    .formulario-topo,
+    .campo {
+      padding-left: 18px;
+      padding-right: 18px;
+    }
+
+    .linha-campos {
+      grid-template-columns: 1fr;
+      gap: 0;
+    }
+
+    .publicacao {
+      margin-left: 18px;
+      margin-right: 18px;
+    }
+
+    .acoes {
+      padding: 18px;
+      flex-direction: column-reverse;
+    }
+
+    .botao-cancelar,
+    .botao-guardar {
+      width: 100%;
+    }
+  }
+</style>

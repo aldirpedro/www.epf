@@ -1,0 +1,707 @@
+
+---
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import { criarSupabaseServer } from "../../../lib/supabase/server";
+
+export const prerender = false;
+
+Astro.response.headers.set("Cache-Control", "private, no-store");
+
+const supabase = criarSupabaseServer(Astro);
+
+const {
+  data: { user },
+  error: erroAutenticacao,
+} = await supabase.auth.getUser();
+
+if (erroAutenticacao || !user) {
+  return Astro.redirect("/admin/login");
+}
+
+const { data: perfil, error: erroPerfil } = await supabase
+  .from("perfis")
+  .select("nome, perfil, ativo")
+  .eq("id", user.id)
+  .single();
+
+if (erroPerfil || !perfil?.ativo) {
+  return Astro.redirect("/admin");
+}
+
+// Consultar as permissões individuais deste utilizador.
+const acoes = [
+  "ver",
+  "criar",
+  "editar",
+  "eliminar",
+  "publicar",
+] as const;
+
+const resultadosPermissoes = await Promise.all(
+  acoes.map((acao) =>
+    supabase.rpc("tem_permissao", {
+      p_recurso: "noticias",
+      p_acao: acao,
+    })
+  )
+);
+
+const permissoes = Object.fromEntries(
+  acoes.map((acao, indice) => [
+    acao,
+    resultadosPermissoes[indice].error === null &&
+      resultadosPermissoes[indice].data === true,
+  ])
+) as Record<(typeof acoes)[number], boolean>;
+
+const podeVer = permissoes.ver;
+const podeCriar = permissoes.criar;
+const podeEditar = permissoes.editar;
+const podeEliminar = permissoes.eliminar;
+const podePublicar = permissoes.publicar;
+
+// Um utilizador sem qualquer autorização para Notícias
+// não pode aceder a esta secção.
+const temAcessoNoticias =
+  podeVer ||
+  podeCriar ||
+  podeEditar ||
+  podeEliminar ||
+  podePublicar;
+
+if (!temAcessoNoticias) {
+  return Astro.redirect("/admin");
+}
+
+const nome = perfil.nome || "Utilizador";
+
+const nomesCargos: Record<string, string> = {
+  super_admin: "Super Administrador",
+  coordenador: "Coordenador",
+  audiovisuais: "Audiovisuais",
+  secretaria: "Secretaria",
+};
+
+const nomeCargo =
+  nomesCargos[perfil.perfil] || "Utilizador";
+
+// Consultar notícias.
+// A base de dados continua a aplicar as políticas RLS.
+const { data: noticias, error } = await supabase
+  .from("noticias")
+  .select("id, titulo, imagem_url, publicada, criado_em")
+  .order("criado_em", { ascending: false });
+
+const totalNoticias = noticias?.length ?? 0;
+
+const totalPublicadas =
+  noticias?.filter((noticia) => noticia.publicada).length ?? 0;
+
+const totalRascunhos = totalNoticias - totalPublicadas;
+
+const temAcoesNaTabela = podeEditar || podeEliminar;
+---
+
+<AdminLayout
+  titulo="Gestão de Notícias"
+  nome={nome}
+  perfil={nomeCargo}
+  ativo="noticias"
+>
+  <div class="pagina-noticias">
+    <div class="cabecalho">
+      <div>
+        <a class="voltar" href="/admin/">
+          ← Voltar à visão geral
+        </a>
+
+        <div class="sobretitulo">
+          GESTÃO DE CONTEÚDOS
+        </div>
+
+        <h1>Notícias</h1>
+
+        <p>
+          Consulta e gere as notícias publicadas
+          no website da Escola Profissional do Fundão.
+        </p>
+      </div>
+
+      {
+        podeCriar && (
+          <a
+            class="botao-nova"
+            href="/admin/noticias/nova"
+          >
+            <span>＋</span>
+            Nova notícia
+          </a>
+        )
+      }
+    </div>
+
+    {
+      !error && (
+        <section
+          class="estatisticas"
+          aria-label="Resumo das notícias"
+        >
+          <article class="cartao-estatistica">
+            <span class="estatistica-label">
+              Total de notícias
+            </span>
+
+            <strong>{totalNoticias}</strong>
+          </article>
+
+          <article class="cartao-estatistica">
+            <span class="estatistica-label">
+              Publicadas
+            </span>
+
+            <strong class="numero-verde">
+              {totalPublicadas}
+            </strong>
+          </article>
+
+          <article class="cartao-estatistica">
+            <span class="estatistica-label">
+              Rascunhos
+            </span>
+
+            <strong class="numero-laranja">
+              {totalRascunhos}
+            </strong>
+          </article>
+        </section>
+      )
+    }
+
+    <section class="painel">
+      <div class="painel-cabecalho">
+        <div>
+          <h2>Todas as notícias</h2>
+
+          <p>
+            Consulta os conteúdos da escola e realiza
+            as ações para as quais tens autorização.
+          </p>
+        </div>
+
+        <span class="contador">
+          {error ? "—" : totalNoticias} registos
+        </span>
+      </div>
+
+      {
+        error ? (
+          <div
+            class="mensagem mensagem-erro"
+            role="alert"
+          >
+            Não foi possível carregar as notícias.
+            Tenta atualizar a página.
+          </div>
+        ) : noticias?.length === 0 ? (
+          <div class="estado-vazio">
+            <div class="vazio-icone">▤</div>
+
+            <h3>Ainda não existem notícias</h3>
+
+            <p>
+              {podeCriar
+                ? "Começa por criar a primeira notícia para o website da EPF."
+                : "Não existem notícias disponíveis para consulta."}
+            </p>
+
+            {
+              podeCriar && (
+                <a
+                  class="botao-nova"
+                  href="/admin/noticias/nova"
+                >
+                  ＋ Criar primeira notícia
+                </a>
+              )
+            }
+          </div>
+        ) : (
+          <div class="tabela-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>Imagem</th>
+                  <th>Título</th>
+                  <th>Estado</th>
+                  <th>Data</th>
+
+                  {temAcoesNaTabela && <th>Ações</th>}
+                </tr>
+              </thead>
+
+              <tbody>
+                {noticias?.map((noticia) => (
+                  <tr>
+                    <td>
+                      {noticia.imagem_url ? (
+                        <img
+                          class="miniatura"
+                          src={noticia.imagem_url}
+                          alt={`Imagem da notícia: ${noticia.titulo}`}
+                          loading="lazy"
+                        />
+                      ) : (
+                        <span class="sem-imagem">
+                          Sem imagem
+                        </span>
+                      )}
+                    </td>
+
+                    <td>
+                      <strong class="titulo-noticia">
+                        {noticia.titulo}
+                      </strong>
+                    </td>
+
+                    <td>
+                      <span
+                        class:list={[
+                          "estado",
+                          noticia.publicada
+                            ? "publicada"
+                            : "rascunho",
+                        ]}
+                      >
+                        <span class="estado-ponto" />
+
+                        {noticia.publicada
+                          ? "Publicada"
+                          : "Rascunho"}
+                      </span>
+                    </td>
+
+                    <td class="data">
+                      {noticia.criado_em
+                        ? new Date(
+                            noticia.criado_em
+                          ).toLocaleDateString("pt-PT")
+                        : "—"}
+                    </td>
+
+                    {temAcoesNaTabela && (
+                      <td>
+                        <div class="acoes">
+                          {podeEditar && (
+                            <a
+                              class="botao-editar"
+                              href={`/admin/noticias/editar/${noticia.id}`}
+                            >
+                              Editar
+                            </a>
+                          )}
+
+                          {podeEliminar && (
+                            <form
+                              class="form-eliminar"
+                              action="/admin/noticias/eliminar"
+                              method="POST"
+                              data-confirmar
+                            >
+                              <input
+                                type="hidden"
+                                name="id"
+                                value={noticia.id}
+                              />
+
+                              <button
+                                class="botao-eliminar"
+                                type="submit"
+                              >
+                                Eliminar
+                              </button>
+                            </form>
+                          )}
+                        </div>
+                      </td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )
+      }
+    </section>
+  </div>
+</AdminLayout>
+
+<script>
+  document
+    .querySelectorAll<HTMLFormElement>("form[data-confirmar]")
+    .forEach((form) => {
+      form.addEventListener("submit", (evento) => {
+        const confirmado = window.confirm(
+          "Tens a certeza de que queres eliminar esta notícia? Esta ação não pode ser anulada."
+        );
+
+        if (!confirmado) {
+          evento.preventDefault();
+        }
+      });
+    });
+</script>
+
+<style>
+  .pagina-noticias {
+    max-width: 1350px;
+    margin: 0 auto;
+  }
+
+  .cabecalho {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 20px;
+    margin-bottom: 26px;
+  }
+
+  .voltar {
+    display: inline-block;
+    margin-bottom: 25px;
+    color: #75869a;
+    font-size: 13px;
+    font-weight: 600;
+    text-decoration: none;
+  }
+
+  .voltar:hover {
+    color: #267a4b;
+  }
+
+  .sobretitulo {
+    color: #34885c;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+  }
+
+  h1 {
+    margin: 9px 0;
+    color: #152d43;
+    font-size: clamp(28px, 3vw, 36px);
+    letter-spacing: -0.04em;
+  }
+
+  .cabecalho p {
+    margin: 0;
+    color: #75869a;
+    font-size: 14px;
+    line-height: 1.7;
+  }
+
+  .botao-nova {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    flex-shrink: 0;
+    padding: 13px 20px;
+    background: #267a4b;
+    color: white;
+    border-radius: 9px;
+    font-size: 13px;
+    font-weight: 700;
+    white-space: nowrap;
+    text-decoration: none;
+    transition: background 0.2s;
+  }
+
+  .botao-nova:hover {
+    background: #1d603b;
+  }
+
+  .botao-nova span {
+    font-size: 19px;
+    line-height: 1;
+  }
+
+  .estatisticas {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 18px;
+    margin-bottom: 24px;
+  }
+
+  .cartao-estatistica {
+    background: white;
+    border: 1px solid #e4eaf0;
+    border-radius: 14px;
+    padding: 23px;
+  }
+
+  .estatistica-label {
+    display: block;
+    color: #8291a2;
+    font-size: 13px;
+    margin-bottom: 12px;
+  }
+
+  .cartao-estatistica strong {
+    color: #172f46;
+    font-size: 32px;
+    letter-spacing: -0.04em;
+  }
+
+  .cartao-estatistica .numero-verde {
+    color: #267a4b;
+  }
+
+  .cartao-estatistica .numero-laranja {
+    color: #b7791f;
+  }
+
+  .painel {
+    background: white;
+    border: 1px solid #e4eaf0;
+    border-radius: 14px;
+    overflow: hidden;
+  }
+
+  .painel-cabecalho {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 25px;
+    border-bottom: 1px solid #e4eaf0;
+  }
+
+  .painel-cabecalho h2 {
+    margin: 0 0 6px;
+    font-size: 18px;
+    color: #172f46;
+  }
+
+  .painel-cabecalho p {
+    margin: 0;
+    font-size: 13px;
+    color: #8291a2;
+  }
+
+  .contador {
+    padding: 8px 12px;
+    background: #f1f5f9;
+    color: #64748b;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .tabela-container {
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  th,
+  td {
+    padding: 17px 20px;
+    border-bottom: 1px solid #edf1f5;
+    text-align: left;
+    vertical-align: middle;
+  }
+
+  th {
+    background: #f8fafc;
+    color: #7c8b9b;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+
+  tbody tr:last-child td {
+    border-bottom: none;
+  }
+
+  tbody tr:hover {
+    background: #fbfcfd;
+  }
+
+  .miniatura {
+    display: block;
+    width: 88px;
+    height: 62px;
+    object-fit: cover;
+    border-radius: 9px;
+  }
+
+  .sem-imagem {
+    display: inline-block;
+    padding: 12px;
+    background: #f1f5f9;
+    border-radius: 8px;
+    color: #94a3b8;
+    font-size: 11px;
+    white-space: nowrap;
+  }
+
+  .titulo-noticia {
+    display: block;
+    min-width: 150px;
+    color: #25384b;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .estado {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 10px;
+    border-radius: 30px;
+    font-size: 12px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .estado-ponto {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+
+  .publicada {
+    background: #e6f5ec;
+    color: #267a4b;
+  }
+
+  .rascunho {
+    background: #fff4df;
+    color: #a66a15;
+  }
+
+  .data {
+    color: #75869a;
+    font-size: 13px;
+    white-space: nowrap;
+  }
+
+  .acoes {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .botao-editar,
+  .botao-eliminar {
+    display: inline-block;
+    padding: 9px 13px;
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .botao-editar {
+    background: #e6f5ec;
+    color: #267a4b;
+    text-decoration: none;
+  }
+
+  .botao-editar:hover {
+    background: #cdebd9;
+  }
+
+  .form-eliminar {
+    margin: 0;
+  }
+
+  .botao-eliminar {
+    background: #fee2e2;
+    color: #b91c1c;
+    border: 0;
+  }
+
+  .botao-eliminar:hover {
+    background: #fecaca;
+  }
+
+  .mensagem {
+    padding: 25px;
+    font-size: 14px;
+  }
+
+  .mensagem-erro {
+    color: #b91c1c;
+    background: #fff5f5;
+  }
+
+  .estado-vazio {
+    padding: 65px 24px;
+    text-align: center;
+  }
+
+  .vazio-icone {
+    width: 64px;
+    height: 64px;
+    margin: 0 auto 20px;
+    display: grid;
+    place-items: center;
+    border-radius: 16px;
+    background: #e6f5ec;
+    color: #267a4b;
+    font-size: 30px;
+  }
+
+  .estado-vazio h3 {
+    margin: 0 0 10px;
+    color: #172f46;
+  }
+
+  .estado-vazio p {
+    margin: 0 auto 22px;
+    max-width: 360px;
+    color: #8291a2;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  @media (max-width: 760px) {
+    .cabecalho {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+
+    .botao-nova {
+      width: 100%;
+    }
+
+    .estatisticas {
+      grid-template-columns: 1fr;
+    }
+
+    .painel-cabecalho {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+
+    th,
+    td {
+      padding: 12px;
+    }
+
+    .miniatura {
+      width: 70px;
+      height: 55px;
+    }
+  }
+</style>

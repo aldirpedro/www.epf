@@ -1,29 +1,77 @@
+
 ---
 import type { CollectionEntry } from 'astro:content';
 import { Image } from 'astro:assets';
 import Icone from './Icone.astro';
 
+type CursoSupabase = {
+  id: string;
+  slug: string;
+  titulo: string;
+  tipo: string;
+  area: string;
+  nivel: string;
+  duracao: string;
+  icone: string | null;
+  cartazes: string[] | null;
+};
+
 interface Props {
-  curso: CollectionEntry<'cursos'>;
+  curso: CollectionEntry<'cursos'> | CursoSupabase;
 }
+
 const { curso } = Astro.props;
-const d = curso.data;
-const cartaz = d.cartazes[0];
+
+const ehSupabase = 'slug' in curso;
+
+const d = ehSupabase ? curso : curso.data;
+
+const slug = ehSupabase ? curso.slug : curso.id;
+
+const cartaz = d.cartazes?.[0];
+
+const cartazExterno =
+  typeof cartaz === 'string' ? cartaz : null;
 ---
 
 <article class:list={['cartao', { 'cartao--cartaz': cartaz }]}>
   {
     cartaz ? (
-      <Image src={cartaz} alt="" widths={[320, 480, 640]} sizes="(max-width: 600px) 100vw, 300px" class="cartaz" />
+      cartazExterno ? (
+        <img
+          src={cartazExterno}
+          alt={`Cartaz do curso ${d.titulo}`}
+          class="cartaz"
+          loading="lazy"
+        />
+      ) : (
+        <Image
+          src={cartaz}
+          alt={`Cartaz do curso ${d.titulo}`}
+          widths={[320, 480, 640]}
+          sizes="(max-width: 600px) 100vw, 300px"
+          class="cartaz"
+        />
+      )
     ) : (
       <div class="icone-caixa">
-        <Icone nome={d.icone} />
+        <Icone nome={d.icone || 'formacao'} />
       </div>
     )
   }
+
   <div class="corpo">
-    <h3><a class="cartao__ligacao" href={`/oferta-formativa/${curso.id}/`}>{d.titulo}</a></h3>
+    <h3>
+      <a
+        class="cartao__ligacao"
+        href={`/oferta-formativa/${slug}/`}
+      >
+        {d.titulo}
+      </a>
+    </h3>
+
     <p>{d.area}</p>
+
     <div class="cartao__rodape">
       <span>{d.nivel} · {d.duracao}</span>
       <Icone nome="seta" tamanho={18} />
@@ -36,23 +84,28 @@ const cartaz = d.cartazes[0];
     padding: 0;
     overflow: hidden;
   }
+
   .cartaz {
     width: 100%;
     height: auto;
     aspect-ratio: 1;
     object-fit: cover;
   }
+
   .corpo {
     display: flex;
     flex-direction: column;
     flex: 1;
   }
+
   .cartao--cartaz .corpo {
     padding: 1.1rem 1.25rem 1.25rem;
   }
+
   h3 {
     font-size: 1.12rem;
   }
+
   p {
     margin: 0;
   }
