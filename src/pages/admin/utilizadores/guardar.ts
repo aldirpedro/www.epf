@@ -32,7 +32,9 @@ export const POST: APIRoute = async (context) => {
   const origem = request.headers.get("origin");
 
   if (origem && origem !== new URL(request.url).origin) {
-    return new Response("Origem não autorizada.", { status: 403 });
+    return new Response("Origem não autorizada.", {
+      status: 403,
+    });
   }
 
   const supabase = criarSupabaseServer(context);
@@ -43,11 +45,15 @@ export const POST: APIRoute = async (context) => {
   } = await supabase.auth.getUser();
 
   if (erroAuth || !user) {
-    return redirect("/admin/login");
+    return redirect("/admin/login", 303);
   }
 
-  // A autorização é novamente verificada no servidor.
-  const { data: administrador, error: erroAdmin } = await supabase
+  // Confirmar que quem guarda as permissões
+  // é um Super Administrador com conta ativa.
+  const {
+    data: administrador,
+    error: erroAdmin,
+  } = await supabase
     .from("perfis")
     .select("id, perfil, ativo")
     .eq("id", user.id)
@@ -58,7 +64,9 @@ export const POST: APIRoute = async (context) => {
     !administrador?.ativo ||
     administrador.perfil !== "super_admin"
   ) {
-    return new Response("Acesso não autorizado.", { status: 403 });
+    return new Response("Acesso não autorizado.", {
+      status: 403,
+    });
   }
 
   let formulario: FormData;
@@ -66,7 +74,9 @@ export const POST: APIRoute = async (context) => {
   try {
     formulario = await request.formData();
   } catch {
-    return new Response("Formulário inválido.", { status: 400 });
+    return new Response("Formulário inválido.", {
+      status: 400,
+    });
   }
 
   const utilizadorId = String(
@@ -74,9 +84,12 @@ export const POST: APIRoute = async (context) => {
   ).trim();
 
   if (!UUID_REGEX.test(utilizadorId)) {
-    return new Response("Identificador inválido.", { status: 400 });
+    return new Response("Identificador inválido.", {
+      status: 400,
+    });
   }
 
+  // Impedir a alteração das próprias permissões.
   if (utilizadorId === user.id) {
     return new Response(
       "Não podes alterar as permissões da tua própria conta.",
@@ -84,12 +97,15 @@ export const POST: APIRoute = async (context) => {
     );
   }
 
-  const { data: destinatario, error: erroDestinatario } =
-    await supabase
-      .from("perfis")
-      .select("id, perfil")
-      .eq("id", utilizadorId)
-      .single();
+  // Confirmar que o destinatário existe.
+  const {
+    data: destinatario,
+    error: erroDestinatario,
+  } = await supabase
+    .from("perfis")
+    .select("id, perfil")
+    .eq("id", utilizadorId)
+    .single();
 
   if (erroDestinatario || !destinatario) {
     return new Response("Utilizador não encontrado.", {
@@ -97,6 +113,7 @@ export const POST: APIRoute = async (context) => {
     });
   }
 
+  // Proteger as contas de Super Administrador.
   if (destinatario.perfil === "super_admin") {
     return new Response(
       "As permissões do Super Administrador não podem ser alteradas.",
@@ -143,8 +160,8 @@ export const POST: APIRoute = async (context) => {
     selecionadas.add(`${recurso}:${acao}`);
   }
 
-  // Guardamos uma linha para cada combinação.
-  // As caixas desmarcadas ficam explicitamente como false.
+  // Guardar todas as combinações de permissões.
+  // As opções desmarcadas ficam com permitido = false.
   const registos = RECURSOS.flatMap((recurso) =>
     ACOES.map((acao) => ({
       utilizador_id: utilizadorId,
@@ -172,8 +189,7 @@ export const POST: APIRoute = async (context) => {
     );
   }
 
-  return redirect(
-    `/admin/utilizadores/editar/${utilizadorId}?guardado=1`,
-    303
-  );
+  // Depois de guardar com sucesso,
+  // regressar automaticamente à lista de utilizadores.
+  return redirect("/admin/utilizadores/", 303);
 };

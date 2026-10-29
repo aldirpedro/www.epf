@@ -1,18 +1,53 @@
+
 ---
 import { site, aplicacoes, navegacao } from '../data/site';
 import Icone from './Icone.astro';
 import Logo from './Logo.astro';
 
 const atual = Astro.url.pathname;
-const ativo = (url: string) => (url === '/' ? atual === '/' : atual.startsWith(url.split('#')[0]));
+
+// Verificar se o endereço corresponde à página atual
+// ou a uma página dentro da mesma secção.
+const ativo = (url: string) => {
+  const caminho = url.split('#')[0];
+
+  if (caminho === '/') {
+    return atual === '/';
+  }
+
+  return atual === caminho || atual.startsWith(caminho);
+};
+
+// Um grupo fica ativo quando a página atual corresponde
+// ao endereço principal OU a qualquer um dos seus submenus.
+// Assim, "Eventos" também fica ativo em "/calendario/".
+const grupoAtivo = (grupo: (typeof navegacao)[number]) => {
+  if (ativo(grupo.url)) {
+    return true;
+  }
+
+  if ('itens' in grupo && grupo.itens) {
+    return grupo.itens.some((item) => ativo(item.url));
+  }
+
+  return false;
+};
 ---
 
 <div class="barra">
   <div class="contentor barra__dentro">
     <div class="barra__contactos">
-      <a href={`tel:${site.telefone.replace(/\s/g, '')}`}><Icone nome="telefone" tamanho={14} />{site.telefone}</a>
-      <a href={`mailto:${site.email}`}><Icone nome="email" tamanho={14} />{site.email}</a>
+      <a href={`tel:${site.telefone.replace(/\s/g, '')}`}>
+        <Icone nome="telefone" tamanho={14} />
+        {site.telefone}
+      </a>
+
+      <a href={`mailto:${site.email}`}>
+        <Icone nome="email" tamanho={14} />
+        {site.email}
+      </a>
     </div>
+
     <ul class="barra__apps" aria-label="Aplicações">
       {
         aplicacoes.map((a) => (
@@ -29,27 +64,53 @@ const ativo = (url: string) => (url === '/' ? atual === '/' : atual.startsWith(u
 
 <header class="cabecalho">
   <div class="contentor cabecalho__dentro">
-    <a href="/" class="cabecalho__logo" aria-label={`${site.nome} — início`}><Logo /></a>
+    <a
+      href="/"
+      class="cabecalho__logo"
+      aria-label={`${site.nome} — início`}
+    >
+      <Logo />
+    </a>
 
-    <button class="cabecalho__menu" type="button" aria-expanded="false" aria-controls="nav-principal">
+    <button
+      class="cabecalho__menu"
+      type="button"
+      aria-expanded="false"
+      aria-controls="nav-principal"
+    >
       <span class="so-leitor">Menu</span>
       <Icone nome="menu" tamanho={26} />
     </button>
 
-    <nav id="nav-principal" class="nav" aria-label="Navegação principal">
+    <nav
+      id="nav-principal"
+      class="nav"
+      aria-label="Navegação principal"
+    >
       <ul class="nav__lista">
         {
           navegacao.map((g) =>
             g.itens ? (
               <li class="nav__grupo">
-                <button type="button" class:list={['nav__item', { ativo: ativo(g.url) }]} aria-expanded="false">
+                <button
+                  type="button"
+                  class:list={[
+                    'nav__item',
+                    { ativo: grupoAtivo(g) },
+                  ]}
+                  aria-expanded="false"
+                >
                   {g.nome}
                   <Icone nome="baixo" tamanho={16} />
                 </button>
+
                 <ul class="nav__sub">
                   {g.itens.map((i) => (
                     <li>
-                      <a href={i.url}>
+                      <a
+                        href={i.url}
+                        aria-current={ativo(i.url) ? 'page' : undefined}
+                      >
                         <strong>{i.nome}</strong>
                         {i.nota && <span>{i.nota}</span>}
                       </a>
@@ -59,7 +120,14 @@ const ativo = (url: string) => (url === '/' ? atual === '/' : atual.startsWith(u
               </li>
             ) : (
               <li>
-                <a href={g.url} class:list={['nav__item', { ativo: ativo(g.url) }]} aria-current={ativo(g.url) ? 'page' : undefined}>
+                <a
+                  href={g.url}
+                  class:list={[
+                    'nav__item',
+                    { ativo: ativo(g.url) },
+                  ]}
+                  aria-current={ativo(g.url) ? 'page' : undefined}
+                >
                   {g.nome}
                 </a>
               </li>
@@ -67,9 +135,13 @@ const ativo = (url: string) => (url === '/' ? atual === '/' : atual.startsWith(u
           )
         }
       </ul>
+
       {
         site.inscricoes.abertas && (
-          <a href="/inscricoes/" class="botao botao--primario nav__cta">
+          <a
+            href="/inscricoes/"
+            class="botao botao--primario nav__cta"
+          >
             Inscreve-te
           </a>
         )
@@ -79,32 +151,55 @@ const ativo = (url: string) => (url === '/' ? atual === '/' : atual.startsWith(u
 </header>
 
 <script>
-  const menu = document.querySelector<HTMLButtonElement>('.cabecalho__menu');
-  const nav = document.querySelector<HTMLElement>('.nav');
-  const grupos = [...document.querySelectorAll<HTMLButtonElement>('.nav__grupo > button')];
+  const menu =
+    document.querySelector<HTMLButtonElement>('.cabecalho__menu');
+
+  const nav =
+    document.querySelector<HTMLElement>('.nav');
+
+  const grupos = [
+    ...document.querySelectorAll<HTMLButtonElement>(
+      '.nav__grupo > button'
+    ),
+  ];
 
   const fecharGrupos = (exceto?: HTMLButtonElement) =>
-    grupos.forEach((b) => b !== exceto && b.setAttribute('aria-expanded', 'false'));
+    grupos.forEach((b) => {
+      if (b !== exceto) {
+        b.setAttribute('aria-expanded', 'false');
+      }
+    });
 
   menu?.addEventListener('click', () => {
-    const aberto = menu.getAttribute('aria-expanded') === 'true';
+    const aberto =
+      menu.getAttribute('aria-expanded') === 'true';
+
     menu.setAttribute('aria-expanded', String(!aberto));
+
     nav?.classList.toggle('nav--aberta', !aberto);
   });
 
   grupos.forEach((b) =>
     b.addEventListener('click', () => {
-      const aberto = b.getAttribute('aria-expanded') === 'true';
+      const aberto =
+        b.getAttribute('aria-expanded') === 'true';
+
       fecharGrupos(b);
+
       b.setAttribute('aria-expanded', String(!aberto));
     }),
   );
 
   document.addEventListener('click', (e) => {
-    if (!(e.target as Element).closest('.nav__grupo')) fecharGrupos();
+    if (!(e.target as Element).closest('.nav__grupo')) {
+      fecharGrupos();
+    }
   });
+
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') fecharGrupos();
+    if (e.key === 'Escape') {
+      fecharGrupos();
+    }
   });
 </script>
 
@@ -114,6 +209,7 @@ const ativo = (url: string) => (url === '/' ? atual === '/' : atual.startsWith(u
     color: #c9d8d3;
     font-size: 0.8rem;
   }
+
   .barra__dentro {
     display: flex;
     justify-content: space-between;
@@ -121,6 +217,7 @@ const ativo = (url: string) => (url === '/' ? atual === '/' : atual.startsWith(u
     gap: 1rem;
     min-height: 2.25rem;
   }
+
   .barra a {
     display: inline-flex;
     align-items: center;
@@ -129,9 +226,11 @@ const ativo = (url: string) => (url === '/' ? atual === '/' : atual.startsWith(u
     text-decoration: none;
     white-space: nowrap;
   }
+
   .barra a:hover {
     color: #fff;
   }
+
   .barra__contactos,
   .barra__apps {
     display: flex;
@@ -149,6 +248,7 @@ const ativo = (url: string) => (url === '/' ? atual === '/' : atual.startsWith(u
     backdrop-filter: blur(10px);
     border-bottom: 1px solid var(--linha);
   }
+
   .cabecalho__dentro {
     display: flex;
     align-items: center;
@@ -156,10 +256,12 @@ const ativo = (url: string) => (url === '/' ? atual === '/' : atual.startsWith(u
     gap: 1.5rem;
     min-height: 4.5rem;
   }
+
   .cabecalho__logo {
     text-decoration: none;
     flex: none;
   }
+
   .cabecalho__menu {
     display: none;
     padding: 0.4rem;
@@ -174,6 +276,7 @@ const ativo = (url: string) => (url === '/' ? atual === '/' : atual.startsWith(u
     align-items: center;
     gap: 1rem;
   }
+
   .nav__lista {
     display: flex;
     align-items: center;
@@ -182,9 +285,11 @@ const ativo = (url: string) => (url === '/' ? atual === '/' : atual.startsWith(u
     padding: 0;
     list-style: none;
   }
+
   .nav__grupo {
     position: relative;
   }
+
   .nav__item {
     display: inline-flex;
     align-items: center;
@@ -201,20 +306,25 @@ const ativo = (url: string) => (url === '/' ? atual === '/' : atual.startsWith(u
     white-space: nowrap;
     cursor: pointer;
   }
+
   .nav__item:hover,
   .nav__item[aria-expanded='true'] {
     background: var(--fundo-suave);
     color: var(--petroleo);
   }
+
   .nav__item.ativo {
     color: var(--verde-escuro);
   }
+
   .nav__item :global(svg) {
     transition: transform 0.15s;
   }
+
   .nav__item[aria-expanded='true'] :global(svg) {
     transform: rotate(180deg);
   }
+
   .nav__sub {
     display: none;
     position: absolute;
@@ -229,9 +339,11 @@ const ativo = (url: string) => (url === '/' ? atual === '/' : atual.startsWith(u
     border-radius: var(--raio-g);
     box-shadow: var(--sombra);
   }
+
   .nav__item[aria-expanded='true'] + .nav__sub {
     display: block;
   }
+
   .nav__sub a {
     display: flex;
     flex-direction: column;
@@ -240,17 +352,26 @@ const ativo = (url: string) => (url === '/' ? atual === '/' : atual.startsWith(u
     color: var(--texto);
     text-decoration: none;
   }
+
   .nav__sub a:hover {
     background: var(--fundo-suave);
   }
+
+  .nav__sub a[aria-current='page'] {
+    background: var(--fundo-suave);
+    color: var(--verde-escuro);
+  }
+
   .nav__sub strong {
     font-weight: 600;
     font-size: 0.94rem;
   }
+
   .nav__sub span {
     font-size: 0.82rem;
     color: var(--texto-suave);
   }
+
   .nav__cta {
     padding: 0.6rem 1.1rem;
     font-size: 0.94rem;
@@ -261,6 +382,7 @@ const ativo = (url: string) => (url === '/' ? atual === '/' : atual.startsWith(u
     .cabecalho__menu {
       display: block;
     }
+
     .nav {
       display: none;
       position: absolute;
@@ -274,33 +396,40 @@ const ativo = (url: string) => (url === '/' ? atual === '/' : atual.startsWith(u
       border-bottom: 1px solid var(--linha);
       box-shadow: var(--sombra);
     }
+
     .nav--aberta {
       display: flex;
     }
+
     .nav__lista {
       flex-direction: column;
       align-items: stretch;
     }
+
     .nav__item {
       width: 100%;
       justify-content: space-between;
       padding: 0.8rem 0.5rem;
       font-size: 1rem;
     }
+
     .nav__sub {
       position: static;
       border: 0;
       box-shadow: none;
       padding: 0 0 0.5rem 0.5rem;
     }
+
     .nav__cta {
       justify-content: center;
     }
   }
+
   @media (max-width: 640px) {
     .barra__contactos a:last-child {
       display: none;
     }
+
     .barra__apps {
       gap: 0.9rem;
     }

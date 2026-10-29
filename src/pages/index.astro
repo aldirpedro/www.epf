@@ -78,6 +78,36 @@ const noticias = [
   })
   .slice(0, 3);
 
+// EVENTOS — próximos eventos publicados no Supabase
+const agora = new Date().toISOString();
+
+const { data: eventosSupabase, error: erroEventos } = await supabase
+  .from('eventos')
+  .select('id, titulo, descricao, data_inicio, data_fim, local, imagem_url')
+  .eq('publicado', true)
+  .gte('data_inicio', agora)
+  .order('data_inicio', { ascending: true })
+  .limit(3);
+
+if (erroEventos) {
+  console.error(
+    'Erro ao carregar eventos da página inicial:',
+    erroEventos.message
+  );
+}
+
+const eventos = eventosSupabase ?? [];
+
+const formatarDataEvento = (valor: string) =>
+  new Intl.DateTimeFormat('pt-PT', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'Europe/Lisbon',
+  }).format(new Date(valor));
+
 const destaques = [
   { valor: String(site.fundacao), rotulo: 'Ano de fundação' },
   { valor: String(profissionais.length), rotulo: 'Cursos profissionais' },
@@ -320,6 +350,96 @@ const pilares = [
       </div>
     </div>
   </section>
+
+  <!-- PRÓXIMOS EVENTOS DO SUPABASE -->
+
+  <section class="seccao eventos-inicio">
+    <div class="contentor">
+      <div class="cabecalho-seccao">
+        <div>
+          <span class="sobretitulo">Agenda da escola</span>
+          <h2>Próximos eventos</h2>
+          <p>
+            Acompanha as atividades, iniciativas e acontecimentos
+            da Escola Profissional do Fundão.
+          </p>
+        </div>
+
+        <a href="/eventos/" class="ligacao-seta">
+          Todos os eventos
+          <Icone nome="seta" tamanho={18} />
+        </a>
+      </div>
+
+      {
+        eventos.length > 0 ? (
+          <div class="grelha grelha--3">
+            {eventos.map((evento) => (
+              <article class="evento-cartao">
+                <a
+                  href={`/eventos/${evento.id}/`}
+                  class="evento-cartao__ligacao"
+                >
+                  {evento.imagem_url ? (
+                    <img
+                      src={evento.imagem_url}
+                      alt={`Imagem do evento ${evento.titulo}`}
+                      class="evento-cartao__imagem"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <div class="evento-cartao__sem-imagem">
+                      <span>EPF</span>
+                      <strong>Eventos</strong>
+                    </div>
+                  )}
+
+                  <div class="evento-cartao__conteudo">
+                    <time datetime={evento.data_inicio}>
+                      {formatarDataEvento(evento.data_inicio)}
+                    </time>
+
+                    <h3>{evento.titulo}</h3>
+
+                    {evento.local && (
+                      <p class="evento-cartao__local">
+                        {evento.local}
+                      </p>
+                    )}
+
+                    <span class="evento-cartao__ver">
+                      Ver detalhes
+                      <Icone nome="seta" tamanho={16} />
+                    </span>
+                  </div>
+                </a>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <div class="eventos-vazio">
+            <p>
+              De momento, não existem próximos eventos anunciados.
+            </p>
+
+            <a href="/eventos/" class="ligacao-seta">
+              Consultar todos os eventos
+              <Icone nome="seta" tamanho={18} />
+            </a>
+          </div>
+        )
+      }
+
+      <div class="eventos-inicio__rodape">
+        <a href="/calendario/" class="botao botao--primario">
+          Consultar calendário
+          <Icone nome="seta" tamanho={18} />
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ERASMUS+ -->
 
   <section class="europa">
     <Image
@@ -608,6 +728,130 @@ const pilares = [
   .cef a:hover {
     border-color: var(--verde);
   }
+
+  /* Eventos na página inicial */
+
+  .eventos-inicio {
+    background: #fff;
+  }
+
+  .evento-cartao {
+    min-width: 0;
+    overflow: hidden;
+    background: #fff;
+    border: 1px solid var(--linha);
+    border-radius: var(--raio-g);
+    box-shadow: 0 8px 24px rgb(13 33 31 / 0.06);
+    transition:
+      transform 0.2s ease,
+      box-shadow 0.2s ease;
+  }
+
+  .evento-cartao:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--sombra);
+  }
+
+  .evento-cartao__ligacao {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    color: var(--texto);
+    text-decoration: none;
+  }
+
+  .evento-cartao__imagem,
+  .evento-cartao__sem-imagem {
+    width: 100%;
+    height: 210px;
+    object-fit: cover;
+  }
+
+  .evento-cartao__sem-imagem {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    background: linear-gradient(135deg, #164b3a, #267a4b);
+    color: #fff;
+  }
+
+  .evento-cartao__sem-imagem span {
+    font-size: 0.8rem;
+    letter-spacing: 0.2em;
+    opacity: 0.8;
+  }
+
+  .evento-cartao__sem-imagem strong {
+    font-size: 1.8rem;
+  }
+
+  .evento-cartao__conteudo {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 1.5rem;
+  }
+
+  .evento-cartao__conteudo time {
+    color: var(--verde-escuro);
+    font-size: 0.85rem;
+    font-weight: 700;
+    text-transform: capitalize;
+  }
+
+  .evento-cartao__conteudo h3 {
+    margin: 0;
+    color: var(--petroleo);
+    font-size: 1.2rem;
+    line-height: 1.35;
+  }
+
+  .evento-cartao__local {
+    margin: 0;
+    color: var(--texto-suave);
+    font-size: 0.9rem;
+  }
+
+  .evento-cartao__ver {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: auto;
+    padding-top: 0.75rem;
+    color: var(--verde-escuro);
+    font-size: 0.9rem;
+    font-weight: 700;
+  }
+
+  .eventos-vazio {
+    padding: 2rem;
+    border: 1px solid var(--linha);
+    border-radius: var(--raio-g);
+    background: var(--fundo-suave);
+  }
+
+  .eventos-vazio p {
+    margin-top: 0;
+  }
+
+  .eventos-inicio__rodape {
+    display: flex;
+    justify-content: center;
+    margin-top: 2rem;
+  }
+
+  @media (max-width: 640px) {
+    .evento-cartao__imagem,
+    .evento-cartao__sem-imagem {
+      height: 190px;
+    }
+  }
+
+  /* Erasmus+ */
 
   .europa {
     position: relative;

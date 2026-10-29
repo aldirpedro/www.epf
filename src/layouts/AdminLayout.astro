@@ -56,9 +56,14 @@ async function temAcesso(recurso: string): Promise<boolean> {
   );
 }
 
-const [podeVerNoticias, podeVerCursos] = await Promise.all([
+const [
+  podeVerNoticias,
+  podeVerCursos,
+  podeVerEventos,
+] = await Promise.all([
   temAcesso("noticias"),
   temAcesso("cursos"),
+  temAcesso("eventos"),
 ]);
 
 // Identificar a secção ativa, incluindo criação e edição.
@@ -167,11 +172,25 @@ const secaoAtiva =
             )
           }
 
-          <div class="menu-link indisponivel">
-            <span class="menu-icone">▦</span>
-            <span>Eventos</span>
-            <small>Em breve</small>
-          </div>
+          {
+            podeVerEventos && (
+              <a
+                href="/admin/eventos/"
+                class:list={[
+                  "menu-link",
+                  secaoAtiva === "eventos" && "ativo",
+                ]}
+                aria-current={
+                  secaoAtiva === "eventos"
+                    ? "page"
+                    : undefined
+                }
+              >
+                <span class="menu-icone">▦</span>
+                <span>Eventos</span>
+              </a>
+            )
+          }
 
           {
             eSuperAdmin && (
@@ -361,16 +380,6 @@ const secaoAtiva =
   .menu-link.ativo {
     background: rgba(255, 255, 255, 0.18);
     color: white;
-  }
-
-  .menu-link.indisponivel {
-    opacity: 0.55;
-    cursor: default;
-  }
-
-  .menu-link.indisponivel small {
-    margin-left: auto;
-    font-size: 10px;
   }
 
   .menu-separador {
