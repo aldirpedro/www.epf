@@ -1,0 +1,543 @@
+
+---
+import { criarSupabaseServer } from "../lib/supabase/server";
+
+interface Props {
+  titulo: string;
+  nome?: string;
+  perfil?: string;
+  ativo?: "inicio" | "noticias" | "cursos" | "eventos" | "utilizadores";
+}
+
+const {
+  titulo,
+  nome = "Coordenador",
+  perfil = "Coordenador",
+  ativo,
+} = Astro.props;
+
+// O cargo é obtido do middleware.
+const perfilAdmin = Astro.locals.perfilAdmin;
+
+const eSuperAdmin =
+  perfilAdmin?.ativo === true &&
+  perfilAdmin.perfil === "super_admin";
+
+// Cliente Supabase associado à sessão do funcionário.
+const supabase = criarSupabaseServer(Astro);
+
+// Uma secção aparece no menu quando o funcionário
+// tem pelo menos uma permissão nessa secção.
+async function temAcesso(recurso: string): Promise<boolean> {
+  if (eSuperAdmin) {
+    return true;
+  }
+
+  const acoes = [
+    "ver",
+    "criar",
+    "editar",
+    "eliminar",
+    "publicar",
+  ];
+
+  const resultados = await Promise.all(
+    acoes.map((acao) =>
+      supabase.rpc("tem_permissao", {
+        p_recurso: recurso,
+        p_acao: acao,
+      })
+    )
+  );
+
+  return resultados.some(
+    (resultado) =>
+      !resultado.error && resultado.data === true
+  );
+}
+
+const [podeVerNoticias, podeVerCursos] = await Promise.all([
+  temAcesso("noticias"),
+  temAcesso("cursos"),
+]);
+
+// Identificar a secção ativa, incluindo criação e edição.
+const caminho = Astro.url.pathname;
+
+const secaoAtiva =
+  ativo ??
+  (caminho.startsWith("/admin/utilizadores")
+    ? "utilizadores"
+    : caminho.startsWith("/admin/noticias")
+      ? "noticias"
+      : caminho.startsWith("/admin/cursos")
+        ? "cursos"
+        : caminho.startsWith("/admin/eventos")
+          ? "eventos"
+          : "inicio");
+---
+
+<html lang="pt">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1"
+    />
+    <title>{titulo} | EPF</title>
+  </head>
+
+  <body>
+    <div class="admin">
+      <aside class="barra-lateral">
+        <a class="marca" href="/admin/">
+          <img
+            src="/logo.png"
+            alt="Logótipo da Escola Profissional do Fundão"
+            class="marca-logo"
+          />
+
+          <span class="marca-texto">
+            <strong>Escola Profissional</strong>
+            <small>do Fundão</small>
+            <span class="marca-subtitulo">
+              Administração
+            </span>
+          </span>
+        </a>
+
+        <div class="menu-titulo">
+          MENU PRINCIPAL
+        </div>
+
+        <nav aria-label="Navegação administrativa">
+          <a
+            href="/admin/"
+            class:list={[
+              "menu-link",
+              secaoAtiva === "inicio" && "ativo",
+            ]}
+            aria-current={
+              secaoAtiva === "inicio"
+                ? "page"
+                : undefined
+            }
+          >
+            <span class="menu-icone">▦</span>
+            <span>Visão geral</span>
+          </a>
+
+          {
+            podeVerNoticias && (
+              <a
+                href="/admin/noticias/"
+                class:list={[
+                  "menu-link",
+                  secaoAtiva === "noticias" && "ativo",
+                ]}
+                aria-current={
+                  secaoAtiva === "noticias"
+                    ? "page"
+                    : undefined
+                }
+              >
+                <span class="menu-icone">▤</span>
+                <span>Notícias</span>
+              </a>
+            )
+          }
+
+          {
+            podeVerCursos && (
+              <a
+                href="/admin/cursos/"
+                class:list={[
+                  "menu-link",
+                  secaoAtiva === "cursos" && "ativo",
+                ]}
+                aria-current={
+                  secaoAtiva === "cursos"
+                    ? "page"
+                    : undefined
+                }
+              >
+                <span class="menu-icone">▧</span>
+                <span>Cursos</span>
+              </a>
+            )
+          }
+
+          <div class="menu-link indisponivel">
+            <span class="menu-icone">▦</span>
+            <span>Eventos</span>
+            <small>Em breve</small>
+          </div>
+
+          {
+            eSuperAdmin && (
+              <>
+                <div class="menu-separador" />
+
+                <div class="menu-titulo menu-titulo-secundario">
+                  GESTÃO DO SISTEMA
+                </div>
+
+                <a
+                  href="/admin/utilizadores/"
+                  class:list={[
+                    "menu-link",
+                    secaoAtiva === "utilizadores" && "ativo",
+                  ]}
+                  aria-current={
+                    secaoAtiva === "utilizadores"
+                      ? "page"
+                      : undefined
+                  }
+                >
+                  <span class="menu-icone">♙</span>
+                  <span>Utilizadores</span>
+                </a>
+              </>
+            )
+          }
+        </nav>
+
+        <div class="lateral-rodape">
+          <a
+            href="/"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="ver-site"
+          >
+            ↗ Ver site público
+          </a>
+
+          <form action="/admin/sair" method="POST">
+            <button type="submit" class="botao-sair">
+              Terminar sessão
+            </button>
+          </form>
+        </div>
+      </aside>
+
+      <div class="principal">
+        <header class="topo">
+          <div class="topo-identidade">
+            <span class="topo-etiqueta">
+              ÁREA RESERVADA
+            </span>
+            <strong>Administração EPF</strong>
+          </div>
+
+          <div class="utilizador">
+            <div class="avatar">
+              {nome.charAt(0).toUpperCase()}
+            </div>
+
+            <div class="utilizador-texto">
+              <strong>{nome}</strong>
+              <small>{perfil}</small>
+            </div>
+          </div>
+        </header>
+
+        <main class="conteudo">
+          <slot />
+        </main>
+      </div>
+    </div>
+  </body>
+</html>
+
+<style is:global>
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    margin: 0;
+    background: #f4f7fa;
+    color: #203247;
+    font-family:
+      system-ui,
+      -apple-system,
+      BlinkMacSystemFont,
+      "Segoe UI",
+      sans-serif;
+  }
+
+  a {
+    text-decoration: none;
+  }
+
+  .admin {
+    display: flex;
+    min-height: 100vh;
+  }
+
+  .barra-lateral {
+    width: 264px;
+    flex-shrink: 0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    padding: 28px 16px;
+    background: #267a4b;
+    color: white;
+  }
+
+  .marca {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 4px 10px 30px;
+    color: white;
+  }
+
+  .marca-logo {
+    width: 58px;
+    height: 58px;
+    flex-shrink: 0;
+    object-fit: contain;
+  }
+
+  .marca-texto {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .marca strong {
+    font-size: 13px;
+    line-height: 1.4;
+  }
+
+  .marca small {
+    margin-top: 2px;
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 12px;
+  }
+
+  .marca-subtitulo {
+    margin-top: 5px;
+    color: rgba(255, 255, 255, 0.75);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  .menu-titulo {
+    padding: 12px 14px;
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+  }
+
+  nav {
+    display: grid;
+    gap: 5px;
+  }
+
+  .menu-link {
+    display: flex;
+    align-items: center;
+    gap: 13px;
+    padding: 13px 15px;
+    border-radius: 9px;
+    color: rgba(255, 255, 255, 0.88);
+    font-size: 14px;
+    font-weight: 550;
+  }
+
+  .menu-icone {
+    width: 22px;
+    flex-shrink: 0;
+    font-size: 19px;
+    text-align: center;
+  }
+
+  .menu-link:hover,
+  .menu-link.ativo {
+    background: rgba(255, 255, 255, 0.18);
+    color: white;
+  }
+
+  .menu-link.indisponivel {
+    opacity: 0.55;
+    cursor: default;
+  }
+
+  .menu-link.indisponivel small {
+    margin-left: auto;
+    font-size: 10px;
+  }
+
+  .menu-separador {
+    height: 1px;
+    margin: 17px 13px 5px;
+    background: rgba(255, 255, 255, 0.2);
+  }
+
+  .menu-titulo-secundario {
+    padding-top: 12px;
+  }
+
+  .lateral-rodape {
+    margin-top: auto;
+    padding: 24px 10px 0;
+    display: grid;
+    gap: 16px;
+  }
+
+  .ver-site {
+    color: white;
+    font-size: 13px;
+  }
+
+  .botao-sair {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.45);
+    border-radius: 8px;
+    background: transparent;
+    color: white;
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+  }
+
+  .botao-sair:hover {
+    background: rgba(255, 255, 255, 0.18);
+  }
+
+  .principal {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .topo {
+    height: 82px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 38px;
+    background: white;
+    border-bottom: 1px solid #e4eaf0;
+  }
+
+  .topo-identidade {
+    display: grid;
+    gap: 4px;
+  }
+
+  .topo-etiqueta {
+    color: #8291a2;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+  }
+
+  .topo-identidade strong {
+    font-size: 15px;
+  }
+
+  .utilizador {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .avatar {
+    width: 39px;
+    height: 39px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: #e1f2e8;
+    color: #24744d;
+    font-weight: 800;
+  }
+
+  .utilizador-texto {
+    display: grid;
+    gap: 3px;
+  }
+
+  .utilizador-texto strong {
+    font-size: 13px;
+  }
+
+  .utilizador-texto small {
+    color: #8291a2;
+    font-size: 11px;
+  }
+
+  .conteudo {
+    max-width: 1450px;
+    margin: 0 auto;
+    padding: 38px;
+  }
+
+  @media (max-width: 1050px) {
+    .barra-lateral {
+      width: 225px;
+    }
+  }
+
+  @media (max-width: 760px) {
+    .admin {
+      display: block;
+    }
+
+    .barra-lateral {
+      width: 100%;
+      min-height: auto;
+      padding: 16px;
+    }
+
+    .marca {
+      padding-bottom: 12px;
+    }
+
+    .menu-titulo {
+      display: none;
+    }
+
+    nav {
+      display: flex;
+      flex-wrap: wrap;
+    }
+
+    .menu-link {
+      padding: 10px 12px;
+    }
+
+    .menu-separador {
+      display: none;
+    }
+
+    .lateral-rodape {
+      margin-top: 16px;
+      padding-top: 12px;
+      border-top: 1px solid rgba(255, 255, 255, 0.3);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .botao-sair {
+      width: auto;
+    }
+
+    .topo {
+      height: auto;
+      min-height: 70px;
+      padding: 15px 20px;
+    }
+
+    .conteudo {
+      padding: 24px 18px;
+    }
+  }
+</style>

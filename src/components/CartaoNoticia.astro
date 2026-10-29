@@ -1,20 +1,63 @@
+
 ---
 import type { CollectionEntry } from 'astro:content';
 import { mesAno } from '../data/datas';
 
+type NoticiaMarkdown = CollectionEntry<'noticias'>;
+
+type NoticiaSupabase = {
+  id: string;
+  titulo: string;
+  resumo: string | null;
+  imagem_url: string | null;
+  criado_em: string;
+  publicada: boolean;
+};
+
 interface Props {
-  noticia: CollectionEntry<'noticias'>;
+  noticia: NoticiaMarkdown | NoticiaSupabase;
 }
+
 const { noticia } = Astro.props;
-const d = noticia.data;
+
+const ehSupabase = 'criado_em' in noticia;
+
+const titulo = ehSupabase
+  ? noticia.titulo
+  : noticia.data.titulo;
+
+const resumo = ehSupabase
+  ? noticia.resumo
+  : noticia.data.resumo;
+
+const categoria = ehSupabase
+  ? 'Notícias'
+  : noticia.data.categoria;
+
+const data = ehSupabase
+  ? new Date(noticia.criado_em)
+  : noticia.data.data;
+
+const ligacao = ehSupabase
+  ? `/noticias/${noticia.id}/`
+  : `/noticias/${noticia.id}/`;
 ---
 
 <article class="cartao">
-  <span class="etiqueta">{d.categoria}</span>
-  <h3><a class="cartao__ligacao" href={`/noticias/${noticia.id}/`}>{d.titulo}</a></h3>
-  <p>{d.resumo}</p>
+  <span class="etiqueta">{categoria}</span>
+
+  <h3>
+    <a class="cartao__ligacao" href={ligacao}>
+      {titulo}
+    </a>
+  </h3>
+
+  <p>{resumo}</p>
+
   <div class="cartao__rodape">
-    <time datetime={d.data.toISOString().slice(0, 10)}>{mesAno(d.data)}</time>
+    <time datetime={data.toISOString().slice(0, 10)}>
+      {mesAno(data)}
+    </time>
   </div>
 </article>
 

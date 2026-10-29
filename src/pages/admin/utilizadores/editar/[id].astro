@@ -1,0 +1,417 @@
+
+---
+import AdminLayout from "../../../../layouts/AdminLayout.astro";
+import { criarSupabaseServer } from "../../../../lib/supabase/server";
+
+export const prerender = false;
+
+Astro.response.headers.set("Cache-Control", "private, no-store");
+
+const perfilAdmin = Astro.locals.perfilAdmin;
+
+if (
+  !perfilAdmin?.ativo ||
+  perfilAdmin.perfil !== "super_admin"
+) {
+  return Astro.redirect("/admin/");
+}
+
+const supabase = criarSupabaseServer(Astro);
+const id = Astro.params.id;
+
+if (!id) {
+  return Astro.redirect("/admin/utilizadores/");
+}
+
+const { data: utilizador, error: erroUtilizador } = await supabase
+  .from("perfis")
+  .select("id, nome, perfil, ativo")
+  .eq("id", id)
+  .single();
+
+if (erroUtilizador || !utilizador) {
+  return Astro.redirect("/admin/utilizadores/");
+}
+
+const { data: permissoes, error: erroPermissoes } = await supabase
+  .from("permissoes_utilizador")
+  .select("recurso, acao, permitido")
+  .eq("utilizador_id", id);
+
+const permissoesAtuais = new Set(
+  (permissoes || [])
+    .filter((permissao) => permissao.permitido)
+    .map((permissao) => `${permissao.recurso}:${permissao.acao}`)
+);
+
+const areas = [
+  { chave: "noticias", nome: "Notícias" },
+  { chave: "cursos", nome: "Cursos" },
+  { chave: "eventos", nome: "Eventos" },
+  { chave: "documentacao", nome: "Documentação" },
+  { chave: "utilizadores", nome: "Utilizadores" },
+];
+
+const acoes = [
+  { chave: "ver", nome: "Ver" },
+  { chave: "criar", nome: "Criar" },
+  { chave: "editar", nome: "Editar" },
+  { chave: "eliminar", nome: "Eliminar" },
+  { chave: "publicar", nome: "Publicar" },
+];
+
+const nomeCargo: Record<string, string> = {
+  super_admin: "Super Administrador",
+  coordenador: "Coordenador",
+  audiovisuais: "Audiovisuais",
+  secretaria: "Secretaria",
+};
+
+const eSuperAdmin = utilizador.perfil === "super_admin";
+---
+
+<AdminLayout
+  titulo="Editar Permissões"
+  nome={perfilAdmin.nome || "Administrador"}
+  perfil="Super Administrador"
+>
+  <div class="pagina">
+    <a class="voltar" href="/admin/utilizadores/">
+      ← Voltar aos utilizadores
+    </a>
+
+    <header class="cabecalho">
+      <span class="etiqueta">GESTÃO DE ACESSOS</span>
+      <h1>Permissões do utilizador</h1>
+      <p>
+        Define as ações que esta conta pode realizar no painel
+        administrativo da EPF.
+      </p>
+    </header>
+
+    <section class="cartao identidade">
+      <div class="avatar">
+        {(utilizador.nome || "U").charAt(0).toUpperCase()}
+      </div>
+
+      <div>
+        <h2>{utilizador.nome || "Sem nome"}</h2>
+        <p>
+          {nomeCargo[utilizador.perfil] || utilizador.perfil}
+          {" · "}
+          {utilizador.ativo ? "Conta ativa" : "Conta inativa"}
+        </p>
+      </div>
+    </section>
+
+    {
+      eSuperAdmin ? (
+        <section class="cartao aviso">
+          <h2>Acesso total</h2>
+          <p>
+            O Super Administrador tem acesso a todas as áreas
+            e funcionalidades. As suas permissões não podem
+            ser limitadas nesta página.
+          </p>
+        </section>
+      ) : erroPermissoes ? (
+        <section class="cartao aviso erro">
+          <h2>Erro ao carregar permissões</h2>
+          <p>
+            Não foi possível consultar as permissões deste
+            utilizador. Não é seguro apresentar o formulário.
+          </p>
+        </section>
+      ) : (
+        <form
+          class="cartao formulario"
+          action="/admin/utilizadores/guardar"
+          method="POST"
+        >
+          <input type="hidden" name="utilizador_id" value={id} />
+
+          <div class="formulario-topo">
+            <div>
+              <h2>Permissões individuais</h2>
+              <p>
+                Seleciona as ações autorizadas para cada área.
+              </p>
+            </div>
+          </div>
+
+          <div class="tabela-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Área</th>
+                  {acoes.map((acao) => (
+                    <th>{acao.nome}</th>
+                  ))}
+                </tr>
+              </thead>
+
+              <tbody>
+                {areas.map((area) => (
+                  <tr>
+                    <td class="nome-area">{area.nome}</td>
+
+                    {acoes.map((acao) => {
+                      const chave = `${area.chave}:${acao.chave}`;
+
+                      return (
+                        <td>
+                          <label class="caixa">
+                            <input
+                              type="checkbox"
+                              name="permissoes"
+                              value={chave}
+                              checked={permissoesAtuais.has(chave)}
+                              aria-label={`${area.nome}: ${acao.nome}`}
+                            />
+                          </label>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div class="rodape">
+            <p>
+              As opções desmarcadas não concedem autorização.
+            </p>
+
+            <button type="submit" class="guardar">
+              Guardar permissões
+            </button>
+          </div>
+        </form>
+      )
+    }
+  </div>
+</AdminLayout>
+
+<style>
+  .pagina {
+    max-width: 1180px;
+    margin: 0 auto;
+  }
+
+  .voltar {
+    display: inline-block;
+    margin-bottom: 24px;
+    color: #267a4b;
+    font-size: 13px;
+    font-weight: 700;
+    text-decoration: none;
+  }
+
+  .voltar:hover {
+    text-decoration: underline;
+  }
+
+  .cabecalho {
+    margin-bottom: 25px;
+  }
+
+  .etiqueta {
+    color: #34885c;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+  }
+
+  h1 {
+    margin: 9px 0;
+    color: #172f46;
+    font-size: clamp(27px, 3vw, 35px);
+    letter-spacing: -0.04em;
+  }
+
+  .cabecalho p {
+    margin: 0;
+    color: #75869a;
+    font-size: 14px;
+    line-height: 1.7;
+  }
+
+  .cartao {
+    background: white;
+    border: 1px solid #e4eaf0;
+    border-radius: 14px;
+    margin-bottom: 22px;
+    box-shadow: 0 5px 22px rgb(23 50 76 / 0.025);
+  }
+
+  .identidade {
+    padding: 23px;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+  }
+
+  .avatar {
+    width: 48px;
+    height: 48px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    background: #e6f5ec;
+    color: #267a4b;
+    display: grid;
+    place-items: center;
+    font-size: 20px;
+    font-weight: 800;
+  }
+
+  .identidade h2 {
+    margin: 0 0 5px;
+    color: #172f46;
+    font-size: 17px;
+  }
+
+  .identidade p {
+    margin: 0;
+    color: #8291a2;
+    font-size: 13px;
+  }
+
+  .aviso {
+    padding: 25px;
+  }
+
+  .aviso h2 {
+    margin: 0 0 10px;
+    color: #24744d;
+    font-size: 18px;
+  }
+
+  .aviso p {
+    margin: 0;
+    color: #52667b;
+    font-size: 14px;
+    line-height: 1.7;
+  }
+
+  .aviso.erro h2 {
+    color: #b42318;
+  }
+
+  .formulario {
+    overflow: hidden;
+  }
+
+  .formulario-topo {
+    padding: 25px;
+    border-bottom: 1px solid #edf1f5;
+  }
+
+  .formulario-topo h2 {
+    margin: 0 0 7px;
+    color: #172f46;
+    font-size: 18px;
+  }
+
+  .formulario-topo p {
+    margin: 0;
+    color: #8291a2;
+    font-size: 13px;
+  }
+
+  .tabela-scroll {
+    overflow-x: auto;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    text-align: center;
+  }
+
+  th {
+    padding: 17px;
+    background: #f8fafc;
+    color: #75869a;
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  th:first-child,
+  td:first-child {
+    text-align: left;
+    padding-left: 25px;
+  }
+
+  td {
+    padding: 20px 17px;
+    border-top: 1px solid #edf1f5;
+  }
+
+  .nome-area {
+    color: #203247;
+    font-size: 14px;
+    font-weight: 700;
+  }
+
+  .caixa {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+
+  input[type="checkbox"] {
+    width: 19px;
+    height: 19px;
+    accent-color: #267a4b;
+    cursor: pointer;
+  }
+
+  .rodape {
+    padding: 22px 25px;
+    border-top: 1px solid #edf1f5;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+  }
+
+  .rodape p {
+    margin: 0;
+    color: #8291a2;
+    font-size: 12px;
+  }
+
+  .guardar {
+    border: 0;
+    border-radius: 9px;
+    background: #267a4b;
+    color: white;
+    padding: 13px 20px;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .guardar:hover {
+    background: #1c603a;
+  }
+
+  @media (max-width: 650px) {
+    .rodape {
+      flex-direction: column;
+      align-items: stretch;
+    }
+
+    .guardar {
+      width: 100%;
+    }
+
+    th,
+    td {
+      padding: 14px 10px;
+    }
+  }
+</style>

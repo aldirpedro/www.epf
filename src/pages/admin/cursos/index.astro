@@ -1,0 +1,867 @@
+
+---
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import { criarSupabaseServer } from "../../../lib/supabase/server";
+
+export const prerender = false;
+
+Astro.response.headers.set("Cache-Control", "private, no-store");
+
+const supabase = criarSupabaseServer(Astro);
+
+// 1. Verificar autenticação.
+const {
+  data: { user },
+  error: erroAutenticacao,
+} = await supabase.auth.getUser();
+
+if (erroAutenticacao || !user) {
+  return Astro.redirect("/admin/login");
+}
+
+// 2. Consultar o perfil.
+const {
+  data: perfil,
+  error: erroPerfil,
+} = await supabase
+  .from("perfis")
+  .select("nome, perfil, ativo")
+  .eq("id", user.id)
+  .single();
+
+if (erroPerfil || !perfil?.ativo) {
+  return Astro.redirect("/admin");
+}
+
+// 3. Consultar as permissões individuais.
+const acoes = [
+  "ver",
+  "criar",
+  "editar",
+  "eliminar",
+  "publicar",
+] as const;
+
+const resultadosPermissoes = await Promise.all(
+  acoes.map((acao) =>
+    supabase.rpc("tem_permissao", {
+      p_recurso: "cursos",
+      p_acao: acao,
+    })
+  )
+);
+
+if (
+  resultadosPermissoes.some(
+    (resultado) => resultado.error
+  )
+) {
+  console.error(
+    "Erro ao consultar permissões dos cursos:",
+    resultadosPermissoes
+      .filter((resultado) => resultado.error)
+      .map((resultado) => resultado.error?.message)
+  );
+
+  return new Response(
+    "Não foi possível verificar as permissões.",
+    { status: 500 }
+  );
+}
+
+const permissoes = Object.fromEntries(
+  acoes.map((acao, indice) => [
+    acao,
+    resultadosPermissoes[indice].data === true,
+  ])
+) as Record<(typeof acoes)[number], boolean>;
+
+const podeVer = permissoes.ver;
+const podeCriar = permissoes.criar;
+const podeEditar = permissoes.editar;
+const podeEliminar = permissoes.eliminar;
+
+// Publicar exige também a permissão de editar,
+// porque a operação atualiza o registo do curso.
+const podePublicar =
+  permissoes.publicar && permissoes.editar;
+
+const podeAceder =
+  podeVer ||
+  podeCriar ||
+  podeEditar ||
+  podeEliminar ||
+  podePublicar;
+
+if (!podeAceder) {
+  return Astro.redirect("/admin");
+}
+
+const nome = perfil.nome || "Utilizador";
+
+const nomeCargo =
+  perfil.perfil === "super_admin"
+    ? "Super Administrador"
+    : perfil.perfil === "coordenador"
+      ? "Coordenador"
+      : perfil.perfil === "audiovisuais"
+        ? "Audiovisuais"
+        : perfil.perfil === "secretaria"
+          ? "Secretaria"
+          : "Utilizador";
+
+// 4. Consultar os cursos.
+// A segurança dos registos é também aplicada
+// pelas políticas RLS do Supabase.
+const {
+  data: cursos,
+  error,
+} = await supabase
+  .from("cursos")
+  .select(
+    "id, titulo, sigla, tipo, area, ordem, publicado, cartazes"
+  )
+  .order("tipo", { ascending: false })
+  .order("ordem", { ascending: true });
+
+const totalCursos = cursos?.length ?? 0;
+
+const totalPublicados =
+  cursos?.filter((curso) => curso.publicado).length ?? 0;
+
+const totalRascunhos =
+  totalCursos - totalPublicados;
+
+const totalProfissionais =
+  cursos?.filter(
+    (curso) => curso.tipo === "profissional"
+  ).length ?? 0;
+
+const totalCEF =
+  cursos?.filter(
+    (curso) => curso.tipo === "cef"
+  ).length ?? 0;
+
+const temAcoes =
+  podeEditar || podePublicar || podeEliminar;
+---
+
+<AdminLayout
+  titulo="Gestão de Cursos"
+  nome={nome}
+  perfil={nomeCargo}
+  ativo="cursos"
+>
+  <div class="pagina-cursos">
+    <div class="cabecalho">
+      <div>
+        <a class="voltar" href="/admin/">
+          ← Voltar à visão geral
+        </a>
+
+        <div class="sobretitulo">
+          OFERTA FORMATIVA
+        </div>
+
+        <h1>Gestão de Cursos</h1>
+
+        <p>
+          Consulta e gere a oferta formativa
+          da Escola Profissional do Fundão.
+        </p>
+      </div>
+
+      {
+        podeCriar && (
+          <a
+            class="botao-novo"
+            href="/admin/cursos/novo"
+          >
+            <span>＋</span>
+            Novo curso
+          </a>
+        )
+      }
+    </div>
+
+    {
+      !error && (
+        <section
+          class="estatisticas"
+          aria-label="Resumo dos cursos"
+        >
+          <article class="cartao-estatistica">
+            <span class="estatistica-label">
+              Total de cursos
+            </span>
+
+            <strong>{totalCursos}</strong>
+          </article>
+
+          <article class="cartao-estatistica">
+            <span class="estatistica-label">
+              Publicados
+            </span>
+
+            <strong class="numero-verde">
+              {totalPublicados}
+            </strong>
+          </article>
+
+          <article class="cartao-estatistica">
+            <span class="estatistica-label">
+              Rascunhos
+            </span>
+
+            <strong class="numero-laranja">
+              {totalRascunhos}
+            </strong>
+          </article>
+
+          <article class="cartao-estatistica">
+            <span class="estatistica-label">
+              Profissionais / CEF
+            </span>
+
+            <strong>
+              {totalProfissionais}
+              <span class="separador"> / </span>
+              {totalCEF}
+            </strong>
+          </article>
+        </section>
+      )
+    }
+
+    <section class="painel">
+      <div class="painel-cabecalho">
+        <div>
+          <h2>Todos os cursos</h2>
+
+          <p>
+            Consulta a oferta formativa e utiliza
+            as ações disponíveis para a tua conta.
+          </p>
+        </div>
+
+        <span class="contador">
+          {error ? "—" : totalCursos} registos
+        </span>
+      </div>
+
+      {
+        error ? (
+          <div
+            class="mensagem mensagem-erro"
+            role="alert"
+          >
+            Não foi possível carregar os cursos.
+            Tenta atualizar a página.
+          </div>
+        ) : cursos?.length === 0 ? (
+          <div class="estado-vazio">
+            <div class="vazio-icone">▧</div>
+
+            <h3>Ainda não existem cursos</h3>
+
+            <p>
+              Ainda não existem cursos disponíveis
+              para apresentar nesta página.
+            </p>
+
+            {
+              podeCriar && (
+                <a
+                  class="botao-novo"
+                  href="/admin/cursos/novo"
+                >
+                  ＋ Criar primeiro curso
+                </a>
+              )
+            }
+          </div>
+        ) : (
+          <div class="tabela-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>Cartaz</th>
+                  <th>Curso</th>
+                  <th>Tipo</th>
+                  <th>Área</th>
+                  <th>Estado</th>
+
+                  {
+                    temAcoes && (
+                      <th>Ações</th>
+                    )
+                  }
+                </tr>
+              </thead>
+
+              <tbody>
+                {
+                  cursos?.map((curso) => (
+                    <tr>
+                      <td>
+                        {curso.cartazes?.[0] ? (
+                          <img
+                            class="miniatura"
+                            src={curso.cartazes[0]}
+                            alt={`Cartaz do curso ${curso.titulo}`}
+                            loading="lazy"
+                          />
+                        ) : (
+                          <span class="sem-imagem">
+                            Sem cartaz
+                          </span>
+                        )}
+                      </td>
+
+                      <td>
+                        <strong class="titulo-curso">
+                          {curso.titulo}
+                        </strong>
+
+                        {curso.sigla && (
+                          <span class="sigla">
+                            {curso.sigla}
+                          </span>
+                        )}
+                      </td>
+
+                      <td>
+                        <span class="tipo">
+                          {curso.tipo === "profissional"
+                            ? "Profissional"
+                            : "CEF"}
+                        </span>
+                      </td>
+
+                      <td class="area">
+                        {curso.area || "—"}
+                      </td>
+
+                      <td>
+                        <span
+                          class:list={[
+                            "estado",
+                            curso.publicado
+                              ? "publicado"
+                              : "rascunho",
+                          ]}
+                        >
+                          <span class="estado-ponto" />
+
+                          {curso.publicado
+                            ? "Publicado"
+                            : "Rascunho"}
+                        </span>
+                      </td>
+
+                      {
+                        temAcoes && (
+                          <td>
+                            <div class="acoes">
+                              {
+                                podeEditar && (
+                                  <a
+                                    class="botao-editar"
+                                    href={`/admin/cursos/editar/${curso.id}`}
+                                  >
+                                    Editar
+                                  </a>
+                                )
+                              }
+
+                              {
+                                podePublicar && (
+                                  <form
+                                    action="/admin/cursos/publicar"
+                                    method="POST"
+                                  >
+                                    <input
+                                      type="hidden"
+                                      name="id"
+                                      value={curso.id}
+                                    />
+
+                                    <button
+                                      type="submit"
+                                      class:list={[
+                                        "botao-publicar",
+                                        curso.publicado &&
+                                          "botao-retirar",
+                                      ]}
+                                    >
+                                      {curso.publicado
+                                        ? "Despublicar"
+                                        : "Publicar"}
+                                    </button>
+                                  </form>
+                                )
+                              }
+
+                              {
+                                podeEliminar && (
+                                  <form
+                                    action="/admin/cursos/eliminar"
+                                    method="POST"
+                                    class="formulario-eliminar"
+                                    data-titulo={curso.titulo}
+                                  >
+                                    <input
+                                      type="hidden"
+                                      name="id"
+                                      value={curso.id}
+                                    />
+
+                                    <button
+                                      type="submit"
+                                      class="botao-eliminar"
+                                      aria-label={`Eliminar o curso ${curso.titulo}`}
+                                    >
+                                      Eliminar
+                                    </button>
+                                  </form>
+                                )
+                              }
+                            </div>
+                          </td>
+                        )
+                      }
+                    </tr>
+                  ))
+                }
+              </tbody>
+            </table>
+          </div>
+        )
+      }
+    </section>
+  </div>
+</AdminLayout>
+
+<script>
+  document
+    .querySelectorAll<HTMLFormElement>(
+      ".formulario-eliminar"
+    )
+    .forEach((formulario) => {
+      formulario.addEventListener(
+        "submit",
+        (evento) => {
+          const titulo =
+            formulario.dataset.titulo ??
+            "este curso";
+
+          const confirmado = window.confirm(
+            `Tens a certeza de que queres eliminar o curso "${titulo}"?\n\nEsta ação não pode ser anulada.`
+          );
+
+          if (!confirmado) {
+            evento.preventDefault();
+          }
+        }
+      );
+    });
+</script>
+
+<style>
+  .pagina-cursos {
+    max-width: 1350px;
+    margin: 0 auto;
+  }
+
+  .cabecalho {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 20px;
+    margin-bottom: 26px;
+  }
+
+  .voltar {
+    display: inline-block;
+    margin-bottom: 25px;
+    color: #75869a;
+    font-size: 13px;
+    font-weight: 600;
+    text-decoration: none;
+  }
+
+  .voltar:hover {
+    color: #267a4b;
+  }
+
+  .sobretitulo {
+    color: #34885c;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+  }
+
+  h1 {
+    margin: 9px 0;
+    color: #152d43;
+    font-size: clamp(28px, 3vw, 36px);
+    letter-spacing: -0.04em;
+  }
+
+  .cabecalho p {
+    margin: 0;
+    color: #75869a;
+    font-size: 14px;
+    line-height: 1.7;
+  }
+
+  .botao-novo {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    flex-shrink: 0;
+    padding: 13px 20px;
+    background: #267a4b;
+    color: white;
+    border-radius: 9px;
+    font-size: 13px;
+    font-weight: 700;
+    white-space: nowrap;
+    text-decoration: none;
+  }
+
+  .botao-novo:hover {
+    background: #1d603b;
+  }
+
+  .botao-novo span {
+    font-size: 19px;
+    line-height: 1;
+  }
+
+  .estatisticas {
+    display: grid;
+    grid-template-columns:
+      repeat(4, minmax(0, 1fr));
+    gap: 18px;
+    margin-bottom: 24px;
+  }
+
+  .cartao-estatistica {
+    background: white;
+    border: 1px solid #e4eaf0;
+    border-radius: 14px;
+    padding: 23px;
+  }
+
+  .estatistica-label {
+    display: block;
+    color: #8291a2;
+    font-size: 13px;
+    margin-bottom: 12px;
+  }
+
+  .cartao-estatistica strong {
+    color: #172f46;
+    font-size: 32px;
+    letter-spacing: -0.04em;
+  }
+
+  .cartao-estatistica .numero-verde {
+    color: #267a4b;
+  }
+
+  .cartao-estatistica .numero-laranja {
+    color: #b7791f;
+  }
+
+  .separador {
+    color: #aab7c4;
+    font-weight: 400;
+  }
+
+  .painel {
+    background: white;
+    border: 1px solid #e4eaf0;
+    border-radius: 14px;
+    overflow: hidden;
+  }
+
+  .painel-cabecalho {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 25px;
+    border-bottom: 1px solid #e4eaf0;
+  }
+
+  .painel-cabecalho h2 {
+    margin: 0 0 6px;
+    font-size: 18px;
+    color: #172f46;
+  }
+
+  .painel-cabecalho p {
+    margin: 0;
+    font-size: 13px;
+    color: #8291a2;
+  }
+
+  .contador {
+    padding: 8px 12px;
+    background: #f1f5f9;
+    color: #64748b;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .tabela-container {
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  th,
+  td {
+    padding: 17px 20px;
+    border-bottom: 1px solid #edf1f5;
+    text-align: left;
+    vertical-align: middle;
+  }
+
+  th {
+    background: #f8fafc;
+    color: #7c8b9b;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+
+  tbody tr:last-child td {
+    border-bottom: none;
+  }
+
+  tbody tr:hover {
+    background: #fbfcfd;
+  }
+
+  .miniatura {
+    display: block;
+    width: 78px;
+    height: 100px;
+    object-fit: cover;
+    border-radius: 9px;
+  }
+
+  .sem-imagem {
+    display: inline-block;
+    padding: 12px;
+    background: #f1f5f9;
+    border-radius: 8px;
+    color: #94a3b8;
+    font-size: 11px;
+    white-space: nowrap;
+  }
+
+  .titulo-curso {
+    display: block;
+    min-width: 150px;
+    color: #25384b;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .sigla {
+    display: block;
+    margin-top: 5px;
+    color: #8796a6;
+    font-size: 12px;
+  }
+
+  .tipo {
+    font-size: 13px;
+    color: #52667b;
+  }
+
+  .area {
+    color: #75869a;
+    font-size: 13px;
+  }
+
+  .estado {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 10px;
+    border-radius: 30px;
+    font-size: 12px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .estado-ponto {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+
+  .publicado {
+    background: #e6f5ec;
+    color: #267a4b;
+  }
+
+  .rascunho {
+    background: #fff4df;
+    color: #a66a15;
+  }
+
+  .acoes {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    min-width: 250px;
+  }
+
+  .acoes form {
+    margin: 0;
+  }
+
+  .botao-editar,
+  .botao-publicar,
+  .botao-eliminar {
+    display: inline-block;
+    padding: 9px 12px;
+    border: none;
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .botao-editar {
+    background: #e6f5ec;
+    color: #267a4b;
+    text-decoration: none;
+  }
+
+  .botao-editar:hover {
+    background: #cdebd9;
+  }
+
+  .botao-publicar {
+    background: #dcfce7;
+    color: #166534;
+  }
+
+  .botao-publicar:hover {
+    background: #bbf7d0;
+  }
+
+  .botao-retirar {
+    background: #fff4df;
+    color: #a66a15;
+  }
+
+  .botao-retirar:hover {
+    background: #fce8ba;
+  }
+
+  .botao-eliminar {
+    background: #fee2e2;
+    color: #b91c1c;
+  }
+
+  .botao-eliminar:hover {
+    background: #fecaca;
+  }
+
+  .mensagem {
+    padding: 25px;
+    font-size: 14px;
+  }
+
+  .mensagem-erro {
+    color: #b91c1c;
+    background: #fff5f5;
+  }
+
+  .estado-vazio {
+    padding: 65px 24px;
+    text-align: center;
+  }
+
+  .vazio-icone {
+    width: 64px;
+    height: 64px;
+    margin: 0 auto 20px;
+    display: grid;
+    place-items: center;
+    border-radius: 16px;
+    background: #e6f5ec;
+    color: #267a4b;
+    font-size: 30px;
+  }
+
+  .estado-vazio h3 {
+    margin: 0 0 10px;
+    color: #172f46;
+  }
+
+  .estado-vazio p {
+    margin: 0 auto 22px;
+    max-width: 360px;
+    color: #8291a2;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  @media (max-width: 1200px) {
+    .estatisticas {
+      grid-template-columns:
+        repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (max-width: 760px) {
+    .cabecalho {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+
+    .botao-novo {
+      width: 100%;
+    }
+
+    .estatisticas {
+      grid-template-columns: 1fr;
+    }
+
+    .painel-cabecalho {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+
+    th,
+    td {
+      padding: 12px;
+    }
+
+    .miniatura {
+      width: 65px;
+      height: 85px;
+    }
+  }
+</style>

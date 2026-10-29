@@ -1,0 +1,340 @@
+
+---
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+
+export const prerender = false;
+
+Astro.response.headers.set("Cache-Control", "private, no-store");
+
+const administrador = Astro.locals.perfilAdmin;
+
+if (
+  !administrador?.ativo ||
+  administrador.perfil !== "super_admin"
+) {
+  return Astro.redirect("/admin/");
+}
+
+const erro = Astro.url.searchParams.get("erro");
+
+const mensagensErro: Record<string, string> = {
+  dados: "Preenche todos os campos corretamente.",
+  email: "Introduz um endereço de email válido.",
+  password: "A palavra-passe deve ter pelo menos 12 caracteres.",
+  duplicado: "Já existe uma conta com este endereço de email.",
+  criar: "Não foi possível criar a conta. Tenta novamente.",
+  perfil: "A conta foi criada, mas ocorreu um erro ao configurar o perfil. Contacta o administrador técnico.",
+};
+---
+
+<AdminLayout
+  titulo="Nova Conta"
+  nome={administrador.nome || "Administrador"}
+  perfil="Super Administrador"
+>
+  <main class="pagina">
+    <a href="/admin/utilizadores/" class="voltar">
+      ← Voltar aos utilizadores
+    </a>
+
+    <header class="cabecalho">
+      <span class="etiqueta">GESTÃO DE UTILIZADORES</span>
+      <h1>Nova conta</h1>
+      <p>
+        Cria uma conta para um funcionário da Escola Profissional
+        do Fundão. Depois poderás configurar as permissões individuais.
+      </p>
+    </header>
+
+    {
+      erro && (
+        <div class="alerta" role="alert">
+          {mensagensErro[erro] || "Ocorreu um erro ao criar a conta."}
+        </div>
+      )
+    }
+
+    <form
+      class="cartao"
+      action="/admin/utilizadores/criar"
+      method="POST"
+    >
+      <div class="topo-cartao">
+        <h2>Dados do funcionário</h2>
+        <p>Todos os campos são obrigatórios.</p>
+      </div>
+
+      <div class="campos">
+        <div class="campo">
+          <label for="nome">Nome completo</label>
+          <input
+            id="nome"
+            name="nome"
+            type="text"
+            placeholder="Ex.: Maria Silva"
+            minlength="2"
+            maxlength="120"
+            autocomplete="name"
+            required
+          />
+        </div>
+
+        <div class="campo">
+          <label for="email">Email</label>
+          <input
+            id="email"
+            name="email"
+            type="email"
+            placeholder="Ex.: maria@escola.pt"
+            autocomplete="off"
+            maxlength="254"
+            required
+          />
+        </div>
+
+        <div class="campo">
+          <label for="perfil">Cargo</label>
+          <select id="perfil" name="perfil" required>
+            <option value="" disabled selected>
+              Selecionar cargo
+            </option>
+            <option value="coordenador">Coordenador</option>
+            <option value="audiovisuais">Audiovisuais</option>
+            <option value="secretaria">Secretaria</option>
+          </select>
+          <small>
+            O cargo identifica a função do funcionário. As permissões
+            de acesso serão configuradas separadamente.
+          </small>
+        </div>
+
+        <div class="campo">
+          <label for="password">Palavra-passe inicial</label>
+          <input
+            id="password"
+            name="password"
+            type="password"
+            placeholder="Mínimo de 12 caracteres"
+            minlength="12"
+            maxlength="128"
+            autocomplete="new-password"
+            required
+          />
+          <small>
+            Comunica a palavra-passe ao funcionário por um canal
+            seguro. Recomenda-se alterá-la no primeiro acesso.
+          </small>
+        </div>
+
+        <div class="campo">
+          <label for="confirmar_password">
+            Confirmar palavra-passe
+          </label>
+          <input
+            id="confirmar_password"
+            name="confirmar_password"
+            type="password"
+            placeholder="Repetir palavra-passe"
+            minlength="12"
+            maxlength="128"
+            autocomplete="new-password"
+            required
+          />
+        </div>
+
+        <div class="nota">
+          <strong>Permissões iniciais</strong>
+          <p>
+            A nova conta será criada sem permissões individuais.
+            Depois de a criares, poderás escolher exatamente
+            a que áreas o funcionário pode aceder.
+          </p>
+        </div>
+      </div>
+
+      <div class="rodape">
+        <a href="/admin/utilizadores/" class="cancelar">
+          Cancelar
+        </a>
+
+        <button type="submit" class="criar">
+          Criar conta
+        </button>
+      </div>
+    </form>
+  </main>
+</AdminLayout>
+
+<style>
+  .pagina {
+    max-width: 850px;
+    margin: 0 auto;
+  }
+
+  .voltar {
+    display: inline-block;
+    margin-bottom: 25px;
+    color: #267a4b;
+    font-size: 13px;
+    font-weight: 700;
+    text-decoration: none;
+  }
+
+  .voltar:hover {
+    text-decoration: underline;
+  }
+
+  .cabecalho {
+    margin-bottom: 25px;
+  }
+
+  .etiqueta {
+    color: #34885c;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+  }
+
+  h1 {
+    margin: 10px 0;
+    color: #172f46;
+    font-size: clamp(28px, 3vw, 36px);
+    letter-spacing: -0.04em;
+  }
+
+  .cabecalho p {
+    margin: 0;
+    color: #75869a;
+    font-size: 14px;
+    line-height: 1.7;
+  }
+
+  .cartao {
+    overflow: hidden;
+    background: white;
+    border: 1px solid #e4eaf0;
+    border-radius: 14px;
+    box-shadow: 0 5px 22px rgb(23 50 76 / 0.025);
+  }
+
+  .topo-cartao {
+    padding: 25px;
+    border-bottom: 1px solid #edf1f5;
+  }
+
+  .topo-cartao h2 {
+    margin: 0 0 6px;
+    color: #172f46;
+    font-size: 19px;
+  }
+
+  .topo-cartao p {
+    margin: 0;
+    color: #8291a2;
+    font-size: 13px;
+  }
+
+  .campos {
+    padding: 25px;
+    display: grid;
+    gap: 23px;
+  }
+
+  .campo {
+    display: grid;
+    gap: 9px;
+  }
+
+  .campo label {
+    color: #25394d;
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  .campo input,
+  .campo select {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 13px 14px;
+    border: 1px solid #dce4eb;
+    border-radius: 9px;
+    background: white;
+    color: #203247;
+    font: inherit;
+    font-size: 14px;
+    outline: none;
+  }
+
+  .campo input:focus,
+  .campo select:focus {
+    border-color: #34885c;
+    box-shadow: 0 0 0 3px rgb(52 136 92 / 10%);
+  }
+
+  .campo small {
+    color: #8291a2;
+    font-size: 12px;
+    line-height: 1.6;
+  }
+
+  .nota {
+    padding: 17px;
+    border: 1px solid #dcece3;
+    border-radius: 10px;
+    background: #f3faf6;
+  }
+
+  .nota strong {
+    color: #24744d;
+    font-size: 13px;
+  }
+
+  .nota p {
+    margin: 7px 0 0;
+    color: #597568;
+    font-size: 12px;
+    line-height: 1.7;
+  }
+
+  .rodape {
+    padding: 22px 25px;
+    border-top: 1px solid #edf1f5;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 14px;
+  }
+
+  .cancelar {
+    color: #75869a;
+    font-size: 13px;
+    font-weight: 700;
+    text-decoration: none;
+  }
+
+  .criar {
+    padding: 13px 20px;
+    border: 0;
+    border-radius: 9px;
+    background: #267a4b;
+    color: white;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .criar:hover {
+    background: #1c603a;
+  }
+
+  .alerta {
+    margin-bottom: 20px;
+    padding: 15px 18px;
+    border: 1px solid #f2c7c3;
+    border-radius: 10px;
+    background: #fff5f4;
+    color: #a92c22;
+    font-size: 13px;
+  }
+</style>

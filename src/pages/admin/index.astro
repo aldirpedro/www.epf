@@ -1,0 +1,747 @@
+
+---
+import AdminLayout from "../../layouts/AdminLayout.astro";
+import { criarSupabaseServer } from "../../lib/supabase/server";
+
+export const prerender = false;
+
+Astro.response.headers.set("Cache-Control", "private, no-store");
+
+const supabase = criarSupabaseServer(Astro);
+
+const {
+  data: { user },
+  error: erroAutenticacao,
+} = await supabase.auth.getUser();
+
+if (erroAutenticacao || !user) {
+  return Astro.redirect("/admin/login");
+}
+
+const { data: perfil, error: erroPerfil } = await supabase
+  .from("perfis")
+  .select("nome, perfil, ativo")
+  .eq("id", user.id)
+  .single();
+
+if (erroPerfil || !perfil?.ativo) {
+  return Astro.redirect("/admin/login?erro=acesso");
+}
+
+const eSuperAdmin = perfil.perfil === "super_admin";
+
+const nome = perfil.nome || "Utilizador";
+
+const nomesCargos: Record<string, string> = {
+  super_admin: "Super Administrador",
+  coordenador: "Coordenador",
+  audiovisuais: "Audiovisuais",
+  secretaria: "Secretaria",
+};
+
+const nomePerfil =
+  nomesCargos[perfil.perfil] || perfil.perfil;
+
+// Consultar as permissões reais do Supabase.
+// Estas verificações aplicam-se automaticamente a qualquer conta.
+
+const recursos = ["noticias", "cursos"] as const;
+
+const acoes = [
+  "ver",
+  "criar",
+  "editar",
+  "eliminar",
+  "publicar",
+] as const;
+
+type Recurso = (typeof recursos)[number];
+type Acao = (typeof acoes)[number];
+
+const verificacoes = recursos.flatMap((recurso) =>
+  acoes.map((acao) => ({ recurso, acao }))
+);
+
+const resultados = await Promise.all(
+  verificacoes.map(({ recurso, acao }) =>
+    supabase.rpc("tem_permissao", {
+      p_recurso: recurso,
+      p_acao: acao,
+    })
+  )
+);
+
+const permissoes: Record<
+  Recurso,
+  Record<Acao, boolean>
+> = {
+  noticias: {
+    ver: false,
+    criar: false,
+    editar: false,
+    eliminar: false,
+    publicar: false,
+  },
+  cursos: {
+    ver: false,
+    criar: false,
+    editar: false,
+    eliminar: false,
+    publicar: false,
+  },
+};
+
+verificacoes.forEach(({ recurso, acao }, indice) => {
+  const resultado = resultados[indice];
+
+  permissoes[recurso][acao] =
+    resultado.error === null &&
+    resultado.data === true;
+});
+
+const podeCriarNoticias = permissoes.noticias.criar;
+const podeCriarCursos = permissoes.cursos.criar;
+
+const podeAcederNoticias =
+  Object.values(permissoes.noticias).some(Boolean);
+
+const podeAcederCursos =
+  Object.values(permissoes.cursos).some(Boolean);
+
+const temAlgumAcesso =
+  podeAcederNoticias ||
+  podeAcederCursos ||
+  eSuperAdmin;
+
+// Estatísticas: consultar apenas os recursos autorizados.
+
+let totalNoticias: number | null = null;
+let totalCursos: number | null = null;
+let noticiasPublicadas: number | null = null;
+let cursosPublicados: number | null = null;
+
+if (podeAcederNoticias) {
+  const [noticias, noticiasAtivas] = await Promise.all([
+    supabase
+      .from("noticias")
+      .select("id", { count: "exact", head: true }),
+
+    supabase
+      .from("noticias")
+      .select("id", { count: "exact", head: true })
+      .eq("publicada", true),
+  ]);
+
+  if (!noticias.error) {
+    totalNoticias = noticias.count;
+  }
+
+  if (!noticiasAtivas.error) {
+    noticiasPublicadas = noticiasAtivas.count;
+  }
+}
+
+if (podeAcederCursos) {
+  const [cursos, cursosAtivos] = await Promise.all([
+    supabase
+      .from("cursos")
+      .select("id", { count: "exact", head: true }),
+
+    supabase
+      .from("cursos")
+      .select("id", { count: "exact", head: true })
+      .eq("publicado", true),
+  ]);
+
+  if (!cursos.error) {
+    totalCursos = cursos.count;
+  }
+
+  if (!cursosAtivos.error) {
+    cursosPublicados = cursosAtivos.count;
+  }
+}
+---
+
+<AdminLayout
+  titulo="Painel Administrativo"
+  nome={nome}
+  perfil={nomePerfil}
+  ativo="inicio"
+>
+  <div class="dashboard">
+    <div class="cabecalho">
+      <div>
+        <span class="sobretitulo">
+          PAINEL DE CONTROLO
+        </span>
+
+        <h1>Visão geral</h1>
+
+        <p>
+          Bem-vindo, {nome}. Gere os conteúdos da Escola
+          Profissional do Fundão a partir deste painel.
+        </p>
+      </div>
+
+      <a
+        class="botao-secundario"
+        href="/"
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        Ver website ↗
+      </a>
+    </div>
+
+    {
+      temAlgumAcesso ? (
+        <>
+          <section
+            class="estatisticas"
+            aria-label="Resumo de conteúdos"
+          >
+            {
+              podeAcederNoticias && (
+                <article class="cartao-estatistica">
+                  <div class="estatistica-topo">
+                    <span class="icone icone-azul">
+                      ▤
+                    </span>
+
+                    <span class="indicador">
+                      Notícias
+                    </span>
+                  </div>
+
+                  <strong class="numero">
+                    {totalNoticias ?? "—"}
+                  </strong>
+
+                  <p>
+                    {
+                      noticiasPublicadas === null
+                        ? "Estado indisponível"
+                        : `${noticiasPublicadas} publicadas`
+                    }
+                  </p>
+                </article>
+              )
+            }
+
+            {
+              podeAcederCursos && (
+                <article class="cartao-estatistica">
+                  <div class="estatistica-topo">
+                    <span class="icone icone-verde">
+                      ▧
+                    </span>
+
+                    <span class="indicador">
+                      Cursos
+                    </span>
+                  </div>
+
+                  <strong class="numero">
+                    {totalCursos ?? "—"}
+                  </strong>
+
+                  <p>
+                    {
+                      cursosPublicados === null
+                        ? "Estado indisponível"
+                        : `${cursosPublicados} publicados`
+                    }
+                  </p>
+                </article>
+              )
+            }
+
+            {
+              eSuperAdmin && (
+                <article class="cartao-estatistica">
+                  <div class="estatistica-topo">
+                    <span class="icone icone-laranja">
+                      ▦
+                    </span>
+
+                    <span class="indicador">
+                      Eventos
+                    </span>
+                  </div>
+
+                  <strong class="numero">—</strong>
+
+                  <p>
+                    Gestão em preparação
+                  </p>
+                </article>
+              )
+            }
+          </section>
+
+          <div class="grelha-inferior">
+            <section class="painel">
+              <div class="painel-cabecalho">
+                <h2>Acesso rápido</h2>
+
+                <p>
+                  As operações disponíveis para a tua conta
+                </p>
+              </div>
+
+              <div class="atalhos">
+                {
+                  podeCriarNoticias && (
+                    <a href="/admin/noticias/nova">
+                      <span class="atalho-icone">
+                        ＋
+                      </span>
+
+                      <span class="atalho-texto">
+                        <strong>
+                          Nova notícia
+                        </strong>
+
+                        <small>
+                          Adicionar uma novidade da escola
+                        </small>
+                      </span>
+
+                      <span class="seta">↗</span>
+                    </a>
+                  )
+                }
+
+                {
+                  podeCriarCursos && (
+                    <a href="/admin/cursos/novo">
+                      <span class="atalho-icone">
+                        ＋
+                      </span>
+
+                      <span class="atalho-texto">
+                        <strong>
+                          Novo curso
+                        </strong>
+
+                        <small>
+                          Adicionar uma oferta formativa
+                        </small>
+                      </span>
+
+                      <span class="seta">↗</span>
+                    </a>
+                  )
+                }
+
+                {
+                  podeAcederNoticias && (
+                    <a href="/admin/noticias/">
+                      <span class="atalho-icone">
+                        ▤
+                      </span>
+
+                      <span class="atalho-texto">
+                        <strong>
+                          Gerir notícias
+                        </strong>
+
+                        <small>
+                          Consultar e gerir notícias
+                          conforme as tuas permissões
+                        </small>
+                      </span>
+
+                      <span class="seta">↗</span>
+                    </a>
+                  )
+                }
+
+                {
+                  podeAcederCursos && (
+                    <a href="/admin/cursos/">
+                      <span class="atalho-icone">
+                        ▧
+                      </span>
+
+                      <span class="atalho-texto">
+                        <strong>
+                          Gerir cursos
+                        </strong>
+
+                        <small>
+                          Consultar e gerir a oferta formativa
+                        </small>
+                      </span>
+
+                      <span class="seta">↗</span>
+                    </a>
+                  )
+                }
+
+                {
+                  eSuperAdmin && (
+                    <>
+                      <a href="/admin/utilizadores/">
+                        <span class="atalho-icone">
+                          ♙
+                        </span>
+
+                        <span class="atalho-texto">
+                          <strong>
+                            Gerir utilizadores
+                          </strong>
+
+                          <small>
+                            Contas e permissões individuais
+                          </small>
+                        </span>
+
+                        <span class="seta">↗</span>
+                      </a>
+
+                      <a href="/admin/utilizadores/novo">
+                        <span class="atalho-icone">
+                          ＋
+                        </span>
+
+                        <span class="atalho-texto">
+                          <strong>
+                            Nova conta
+                          </strong>
+
+                          <small>
+                            Adicionar um funcionário da escola
+                          </small>
+                        </span>
+
+                        <span class="seta">↗</span>
+                      </a>
+                    </>
+                  )
+                }
+              </div>
+            </section>
+
+            <section class="painel painel-ajuda">
+              <h2>Gestão de conteúdos</h2>
+
+              <p>
+                As alterações aos cursos e às notícias
+                são guardadas no Supabase.
+              </p>
+
+              <div class="informacao">
+                <span class="ponto-verde"></span>
+
+                <span>
+                  Os conteúdos publicados ficam disponíveis
+                  no website público.
+                </span>
+              </div>
+
+              <div class="informacao">
+                <span class="ponto-cinzento"></span>
+
+                <span>
+                  Os conteúdos não publicados ficam ocultos
+                  dos visitantes.
+                </span>
+              </div>
+
+              {
+                eSuperAdmin && (
+                  <div class="informacao">
+                    <span class="ponto-verde"></span>
+
+                    <span>
+                      Como Super Administrador, podes criar
+                      contas e configurar as permissões
+                      dos funcionários.
+                    </span>
+                  </div>
+                )
+              }
+            </section>
+          </div>
+        </>
+      ) : (
+        <section class="painel">
+          <h2>Área reservada</h2>
+
+          <p>
+            A tua sessão está ativa com o perfil
+            de {nomePerfil.toLowerCase()}.
+          </p>
+
+          <p>
+            Ainda não tens acesso às ferramentas
+            disponíveis neste painel.
+          </p>
+
+          <p>
+            Contacta o Super Administrador para
+            configurar as tuas permissões.
+          </p>
+        </section>
+      )
+    }
+  </div>
+</AdminLayout>
+
+<style>
+  .dashboard {
+    max-width: 1350px;
+    margin: 0 auto;
+  }
+
+  .cabecalho {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    margin-bottom: 30px;
+  }
+
+  .sobretitulo {
+    color: #34885c;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+  }
+
+  h1 {
+    margin: 9px 0;
+    color: #152d43;
+    font-size: clamp(28px, 3vw, 36px);
+    letter-spacing: -0.04em;
+  }
+
+  .cabecalho p {
+    margin: 0;
+    color: #75869a;
+    font-size: 14px;
+    line-height: 1.7;
+  }
+
+  .botao-secundario {
+    flex-shrink: 0;
+    padding: 12px 17px;
+    border: 1px solid #dce5ed;
+    border-radius: 9px;
+    background: white;
+    color: #243e55;
+    font-size: 13px;
+    font-weight: 700;
+    text-decoration: none;
+  }
+
+  .botao-secundario:hover {
+    border-color: #2d8955;
+    color: #267a4b;
+  }
+
+  .estatisticas {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 18px;
+    margin-bottom: 24px;
+  }
+
+  .cartao-estatistica,
+  .painel {
+    background: white;
+    border: 1px solid #e4eaf0;
+    border-radius: 14px;
+    box-shadow: 0 5px 22px rgb(23 50 76 / 0.025);
+  }
+
+  .cartao-estatistica {
+    padding: 24px;
+  }
+
+  .estatistica-topo {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .icone {
+    width: 42px;
+    height: 42px;
+    display: grid;
+    place-items: center;
+    border-radius: 11px;
+    font-size: 22px;
+  }
+
+  .icone-azul {
+    background: #e9f0fb;
+    color: #3b6ba7;
+  }
+
+  .icone-verde {
+    background: #e6f5ec;
+    color: #258151;
+  }
+
+  .icone-laranja {
+    background: #fff1e1;
+    color: #ba7a28;
+  }
+
+  .indicador {
+    color: #8a99a9;
+    font-size: 12px;
+  }
+
+  .numero {
+    display: block;
+    margin-top: 18px;
+    color: #172f46;
+    font-size: 36px;
+    line-height: 1.2;
+    letter-spacing: -0.05em;
+  }
+
+  .cartao-estatistica p {
+    margin: 6px 0 0;
+    color: #8291a2;
+    font-size: 13px;
+  }
+
+  .grelha-inferior {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr;
+    gap: 22px;
+  }
+
+  .painel {
+    padding: 26px;
+  }
+
+  .painel h2 {
+    margin: 0 0 8px;
+    color: #172f46;
+    font-size: 18px;
+  }
+
+  .painel p {
+    color: #8291a2;
+    font-size: 13px;
+    line-height: 1.8;
+  }
+
+  .painel-cabecalho {
+    margin-bottom: 16px;
+  }
+
+  .painel-cabecalho p {
+    margin: 0;
+  }
+
+  .atalhos {
+    display: grid;
+    gap: 4px;
+  }
+
+  .atalhos a {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 15px 10px;
+    border-bottom: 1px solid #eef1f5;
+    color: #203247;
+    text-decoration: none;
+  }
+
+  .atalhos a:last-child {
+    border-bottom: none;
+  }
+
+  .atalhos a:hover {
+    background: #f7fafc;
+    border-radius: 8px;
+  }
+
+  .atalho-icone {
+    width: 38px;
+    height: 38px;
+    flex-shrink: 0;
+    display: grid;
+    place-items: center;
+    border-radius: 10px;
+    background: #e6f5ec;
+    color: #267a4b;
+    font-size: 20px;
+  }
+
+  .atalho-texto {
+    display: grid;
+    gap: 4px;
+    flex: 1;
+  }
+
+  .atalhos strong {
+    font-size: 13px;
+  }
+
+  .atalhos small {
+    color: #8796a6;
+    font-size: 12px;
+  }
+
+  .seta {
+    color: #93a4b2;
+  }
+
+  .painel-ajuda {
+    align-self: start;
+  }
+
+  .informacao {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    margin-top: 22px;
+    font-size: 13px;
+    line-height: 1.6;
+    color: #52667b;
+  }
+
+  .ponto-verde,
+  .ponto-cinzento {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    margin-top: 5px;
+    flex-shrink: 0;
+  }
+
+  .ponto-verde {
+    background: #32a36b;
+  }
+
+  .ponto-cinzento {
+    background: #aab7c4;
+  }
+
+  @media (max-width: 1050px) {
+    .grelha-inferior {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  @media (max-width: 760px) {
+    .cabecalho {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+
+    .estatisticas {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

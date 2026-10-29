@@ -1,0 +1,103 @@
+
+---
+export const prerender = false;
+
+const erro = Astro.url.searchParams.get("erro");
+
+const mensagem =
+  erro === "acesso"
+    ? "A tua conta não está autorizada a aceder ao painel."
+    : erro
+      ? "Email ou palavra-passe inválidos."
+      : null;
+---
+
+<html lang="pt">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width" />
+    <title>Administração | EPF</title>
+  </head>
+  <body>
+    <main class="login">
+      <section class="card">
+        <h1>EPF — Administração</h1>
+        <p>Acesso reservado a professores e funcionários.</p>
+
+        {mensagem && <p class="erro" role="alert">{mensagem}</p>}
+
+        <form action="/admin/entrar" method="POST">
+          <label for="email">Email institucional</label>
+          <input
+            id="email"
+            name="email"
+            type="email"
+            autocomplete="username"
+            required
+          />
+
+          <label for="password">Palavra-passe</label>
+          <input
+            id="password"
+            name="password"
+            type="password"
+            autocomplete="current-password"
+            required
+          />
+
+          <button type="submit">Entrar no painel</button>
+        </form>
+      </section>
+    </main>
+  </body>
+</html>
+
+<style>
+  body {
+    margin: 0;
+    font-family: system-ui, sans-serif;
+    background: #f3f6fa;
+  }
+
+  .login {
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    padding: 20px;
+  }
+
+  .card {
+    width: 100%;
+    max-width: 390px;
+    padding: 32px;
+    background: white;
+    border-radius: 14px;
+    box-shadow: 0 8px 30px #00000012;
+  }
+
+  h1 { color: #16365c; }
+  p { color: #64748b; }
+
+  form {
+    display: grid;
+    gap: 12px;
+    margin-top: 24px;
+  }
+
+  input {
+    padding: 12px;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+  }
+
+  button {
+    padding: 13px;
+    background: #16365c;
+    color: white;
+    border: 0;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+
+  .erro { color: #b91c1c; }
+</style>

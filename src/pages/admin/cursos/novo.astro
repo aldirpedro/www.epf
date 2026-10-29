@@ -1,0 +1,571 @@
+
+---
+import { criarSupabaseServer } from "../../../lib/supabase/server";
+
+export const prerender = false;
+
+Astro.response.headers.set("Cache-Control", "private, no-store");
+
+const supabase = criarSupabaseServer(Astro);
+
+const {
+  data: { user },
+  error: erroAutenticacao,
+} = await supabase.auth.getUser();
+
+if (erroAutenticacao || !user) {
+  return Astro.redirect("/admin/login");
+}
+
+const { data: perfil, error: erroPerfil } = await supabase
+  .from("perfis")
+  .select("perfil, ativo")
+  .eq("id", user.id)
+  .single();
+
+if (erroPerfil || !perfil?.ativo) {
+  return Astro.redirect("/admin");
+}
+
+// Verificar a permissão para criar cursos.
+const {
+  data: podeCriar,
+  error: erroPermissaoCriar,
+} = await supabase.rpc("tem_permissao", {
+  p_recurso: "cursos",
+  p_acao: "criar",
+});
+
+if (erroPermissaoCriar) {
+  console.error(
+    "Erro ao verificar permissão para criar cursos:",
+    erroPermissaoCriar.message
+  );
+}
+
+if (erroPermissaoCriar || podeCriar !== true) {
+  return Astro.redirect("/admin/cursos/");
+}
+
+// Verificar se pode publicar imediatamente.
+const {
+  data: podePublicar,
+  error: erroPermissaoPublicar,
+} = await supabase.rpc("tem_permissao", {
+  p_recurso: "cursos",
+  p_acao: "publicar",
+});
+
+if (erroPermissaoPublicar) {
+  console.error(
+    "Erro ao verificar permissão de publicação:",
+    erroPermissaoPublicar.message
+  );
+}
+---
+
+<html lang="pt">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Novo Curso | EPF</title>
+  </head>
+
+  <body>
+    <main>
+      <a href="/admin/cursos/">
+        ← Voltar à gestão de cursos
+      </a>
+
+      <h1>Novo Curso</h1>
+
+      <p class="introducao">
+        Preenche os dados do curso. Podes guardá-lo como
+        rascunho antes de o publicar.
+      </p>
+
+      <form
+        action="/admin/cursos/criar"
+        method="POST"
+        enctype="multipart/form-data"
+      >
+        <fieldset>
+          <legend>Informação principal</legend>
+
+          <div class="grelha">
+            <div class="campo largo">
+              <label for="titulo">Nome do curso *</label>
+              <input
+                id="titulo"
+                name="titulo"
+                type="text"
+                required
+                maxlength="200"
+                placeholder="Ex.: Técnico/a de Audiovisuais"
+              />
+            </div>
+
+            <div class="campo">
+              <label for="sigla">Sigla</label>
+              <input
+                id="sigla"
+                name="sigla"
+                type="text"
+                maxlength="20"
+                placeholder="Ex.: TA"
+              />
+            </div>
+
+            <div class="campo">
+              <label for="slug">
+                Identificador do endereço (slug) *
+              </label>
+              <input
+                id="slug"
+                name="slug"
+                type="text"
+                required
+                maxlength="120"
+                pattern="[a-z0-9]+(-[a-z0-9]+)*"
+                placeholder="Ex.: tecnico-audiovisuais"
+              />
+              <small>
+                Usa letras minúsculas, números e hífenes.
+              </small>
+            </div>
+
+            <div class="campo">
+              <label for="tipo">Tipo de curso *</label>
+              <select id="tipo" name="tipo" required>
+                <option value="profissional">
+                  Curso Profissional
+                </option>
+                <option value="cef">
+                  Curso de Educação e Formação (CEF)
+                </option>
+              </select>
+            </div>
+
+            <div class="campo">
+              <label for="area">Área de formação *</label>
+              <input
+                id="area"
+                name="area"
+                type="text"
+                required
+                placeholder="Ex.: Audiovisuais"
+              />
+            </div>
+
+            <div class="campo">
+              <label for="icone">Ícone</label>
+              <input
+                id="icone"
+                name="icone"
+                type="text"
+                value="livro"
+                placeholder="Ex.: video"
+              />
+            </div>
+
+            <div class="campo">
+              <label for="ordem">
+                Ordem de apresentação
+              </label>
+              <input
+                id="ordem"
+                name="ordem"
+                type="number"
+                min="0"
+                step="1"
+                value="0"
+              />
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Qualificação e acesso</legend>
+
+          <div class="grelha">
+            <div class="campo">
+              <label for="nivel">
+                Nível de qualificação *
+              </label>
+              <input
+                id="nivel"
+                name="nivel"
+                type="text"
+                required
+                placeholder="Ex.: Nível 4 do QNQ"
+              />
+            </div>
+
+            <div class="campo">
+              <label for="duracao">Duração *</label>
+              <input
+                id="duracao"
+                name="duracao"
+                type="text"
+                required
+                placeholder="Ex.: 3 anos letivos"
+              />
+            </div>
+
+            <div class="campo largo">
+              <label for="certificacao">
+                Certificação *
+              </label>
+              <input
+                id="certificacao"
+                name="certificacao"
+                type="text"
+                required
+                placeholder="Ex.: 12.º ano e certificação profissional"
+              />
+            </div>
+
+            <div class="campo largo">
+              <label for="acesso">
+                Condições de acesso *
+              </label>
+              <input
+                id="acesso"
+                name="acesso"
+                type="text"
+                required
+                placeholder="Ex.: 9.º ano de escolaridade ou equivalente"
+              />
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Descrição do curso</legend>
+
+          <div class="campo">
+            <label for="perfil">
+              Perfil profissional *
+            </label>
+            <textarea
+              id="perfil"
+              name="perfil"
+              rows="5"
+              required
+              placeholder="Descreve o perfil profissional do curso..."
+            ></textarea>
+          </div>
+
+          <div class="campo">
+            <label for="conteudo">
+              Informação adicional
+            </label>
+            <textarea
+              id="conteudo"
+              name="conteudo"
+              rows="6"
+              placeholder="Outras informações sobre o curso..."
+            ></textarea>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Plano de formação</legend>
+
+          <p class="ajuda">
+            Escreve os nomes das disciplinas, uma por linha.
+            Podes deixar uma componente sem disciplinas.
+          </p>
+
+          <div class="campo">
+            <label for="sociocultural">
+              Formação Sociocultural
+            </label>
+            <textarea
+              id="sociocultural"
+              name="sociocultural"
+              rows="5"
+              placeholder="Português&#10;Inglês&#10;Educação Física"
+            ></textarea>
+          </div>
+
+          <div class="campo">
+            <label for="cientifica">
+              Formação Científica
+            </label>
+            <textarea
+              id="cientifica"
+              name="cientifica"
+              rows="4"
+              placeholder="Matemática&#10;Física e Química"
+            ></textarea>
+          </div>
+
+          <div class="campo">
+            <label for="tecnica">
+              Formação Técnica
+            </label>
+            <textarea
+              id="tecnica"
+              name="tecnica"
+              rows="5"
+              placeholder="Disciplina técnica 1&#10;Disciplina técnica 2"
+            ></textarea>
+          </div>
+
+          <div class="campo">
+            <label for="fct">
+              Formação em Contexto de Trabalho
+            </label>
+            <textarea
+              id="fct"
+              name="fct"
+              rows="3"
+              placeholder="Disciplinas, se existirem"
+            ></textarea>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Imagem do curso</legend>
+
+          <div class="campo">
+            <label for="imagem">
+              Escolher imagem ou cartaz
+            </label>
+
+            <input
+              id="imagem"
+              name="imagem"
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+            />
+
+            <small>
+              Formatos permitidos: JPG, PNG ou WebP.
+              Tamanho máximo: 5 MB.
+            </small>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Publicação</legend>
+
+          <label class="checkbox">
+            <input
+              type="checkbox"
+              name="publicado"
+              value="true"
+              disabled={podePublicar !== true}
+            />
+            Marcar curso como publicado
+          </label>
+
+          {
+            podePublicar !== true ? (
+              <p class="ajuda publicacao-ajuda">
+                Não tens permissão para publicar cursos.
+                O novo curso será guardado como rascunho.
+              </p>
+            ) : (
+              <p class="ajuda publicacao-ajuda">
+                Se marcares esta opção, o curso ficará publicado
+                na Oferta Formativa do site público da EPF.
+              </p>
+            )
+          }
+        </fieldset>
+
+        <div class="acoes">
+          <a class="cancelar" href="/admin/cursos/">
+            Cancelar
+          </a>
+
+          <button type="submit" class="guardar">
+            Guardar curso
+          </button>
+        </div>
+      </form>
+    </main>
+  </body>
+</html>
+
+<style>
+  body {
+    margin: 0;
+    background: #f3f6fa;
+    color: #1e293b;
+    font-family: system-ui, sans-serif;
+  }
+
+  main {
+    max-width: 900px;
+    margin: 45px auto;
+    padding: 0 24px 60px;
+  }
+
+  a {
+    color: #16365c;
+    text-decoration: none;
+    font-weight: 600;
+  }
+
+  h1 {
+    margin: 28px 0 8px;
+    color: #16365c;
+  }
+
+  .introducao {
+    color: #64748b;
+    margin-bottom: 28px;
+  }
+
+  form {
+    display: grid;
+    gap: 22px;
+  }
+
+  fieldset {
+    min-width: 0;
+    padding: 24px;
+    margin: 0;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    background: white;
+  }
+
+  legend {
+    padding: 0 8px;
+    color: #16365c;
+    font-weight: 700;
+    font-size: 18px;
+  }
+
+  .grelha {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 18px;
+  }
+
+  .campo {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 18px;
+  }
+
+  .campo:last-child {
+    margin-bottom: 0;
+  }
+
+  .largo {
+    grid-column: 1 / -1;
+  }
+
+  label {
+    font-weight: 600;
+    font-size: 14px;
+  }
+
+  input,
+  select,
+  textarea {
+    box-sizing: border-box;
+    width: 100%;
+    padding: 12px;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    background: white;
+    color: #1e293b;
+    font: inherit;
+  }
+
+  input[type="file"] {
+    cursor: pointer;
+  }
+
+  input:focus,
+  select:focus,
+  textarea:focus {
+    outline: 2px solid #16365c;
+    outline-offset: 1px;
+  }
+
+  textarea {
+    resize: vertical;
+  }
+
+  small,
+  .ajuda {
+    color: #64748b;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .ajuda {
+    margin-top: 0;
+  }
+
+  .publicacao-ajuda {
+    margin-top: 12px;
+  }
+
+  .checkbox {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .checkbox input {
+    width: auto;
+    accent-color: #16365c;
+  }
+
+  .checkbox input:disabled {
+    cursor: not-allowed;
+  }
+
+  .acoes {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .cancelar {
+    padding: 12px 18px;
+  }
+
+  .guardar {
+    padding: 13px 22px;
+    background: #16365c;
+    border: none;
+    border-radius: 8px;
+    color: white;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .guardar:hover {
+    background: #234e7d;
+  }
+
+  @media (max-width: 650px) {
+    main {
+      padding: 0 16px 40px;
+    }
+
+    .grelha {
+      grid-template-columns: 1fr;
+    }
+
+    .largo {
+      grid-column: auto;
+    }
+
+    fieldset {
+      padding: 18px;
+    }
+  }
+</style>

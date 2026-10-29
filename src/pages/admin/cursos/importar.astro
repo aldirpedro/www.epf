@@ -1,0 +1,107 @@
+
+---
+import { criarSupabaseServer } from "../../../lib/supabase/server";
+
+export const prerender = false;
+
+Astro.response.headers.set("Cache-Control", "private, no-store");
+
+const supabase = criarSupabaseServer(Astro);
+
+const {
+  data: { user },
+} = await supabase.auth.getUser();
+
+if (!user) {
+  return Astro.redirect("/admin/login");
+}
+
+const { data: perfil } = await supabase
+  .from("perfis")
+  .select("perfil, ativo")
+  .eq("id", user.id)
+  .single();
+
+if (!perfil?.ativo || perfil.perfil !== "coordenador") {
+  return Astro.redirect("/admin");
+}
+---
+
+<html lang="pt">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Importar Cursos | EPF</title>
+  </head>
+
+  <body>
+    <main>
+      <a href="/admin/cursos/">← Voltar à gestão de cursos</a>
+
+      <h1>Importar cursos antigos</h1>
+
+      <p>
+        Esta operação vai importar os cursos antigos
+        para o Supabase.
+      </p>
+
+      <p>
+        O curso de Audiovisuais será preservado.
+        Os cursos que já existirem não serão duplicados.
+      </p>
+
+      <form action="/admin/cursos/importar-executar" method="POST">
+        <button type="submit">
+          Importar os 9 cursos
+        </button>
+      </form>
+    </main>
+  </body>
+</html>
+
+<style>
+  body {
+    margin: 0;
+    background: #f3f6fa;
+    color: #1e293b;
+    font-family: system-ui, sans-serif;
+  }
+
+  main {
+    max-width: 750px;
+    margin: 60px auto;
+    padding: 30px;
+    background: white;
+    border-radius: 12px;
+  }
+
+  h1 {
+    color: #16365c;
+  }
+
+  a {
+    color: #16365c;
+    font-weight: 600;
+    text-decoration: none;
+  }
+
+  p {
+    line-height: 1.7;
+  }
+
+  button {
+    margin-top: 20px;
+    padding: 14px 22px;
+    background: #16365c;
+    color: white;
+    border: 0;
+    border-radius: 8px;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  button:hover {
+    background: #234e7d;
+  }
+</style>
