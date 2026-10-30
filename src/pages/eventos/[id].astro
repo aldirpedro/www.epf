@@ -8,13 +8,16 @@ export const prerender = false;
 
 const { id } = Astro.params;
 
-if (!id || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+if (
+  !id ||
+  !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+) {
   return Astro.redirect('/404');
 }
 
 const supabase = criarSupabaseServer(Astro);
 
-// Consultar apenas eventos publicados
+// Consultar apenas eventos publicados.
 const { data: evento, error } = await supabase
   .from('eventos')
   .select('id, titulo, descricao, data_inicio, data_fim, local, imagem_url')
@@ -39,23 +42,17 @@ const fmtHora = new Intl.DateTimeFormat('pt-PT', {
 });
 
 const dataInicio = new Date(evento.data_inicio);
-const dataFim = evento.data_fim ? new Date(evento.data_fim) : null;
+const dataFim = evento.data_fim
+  ? new Date(evento.data_fim)
+  : null;
 
 const descricao = evento.descricao ?? '';
 ---
 
-<Pagina titulo={evento.titulo} descricao={descricao.substring(0, 150)}>
-  <header class="topo-pagina">
-    <div class="contentor">
-      <ul class="migalhas">
-        <li><a href="/">Início</a></li>
-        <li><a href="/eventos/">Eventos</a></li>
-        <li>{evento.titulo}</li>
-      </ul>
-      <h1>{evento.titulo}</h1>
-    </div>
-  </header>
-
+<Pagina
+  titulo={evento.titulo}
+  descricao={descricao.substring(0, 150)}
+>
   <main class="contentor seccao duas-colunas">
     <article class="prosa">
       {evento.imagem_url && (
@@ -89,7 +86,10 @@ const descricao = evento.descricao ?? '';
       </dl>
 
       <div style="margin-top: 2rem;">
-        <a href="/eventos/" class="botao botao--contorno">
+        <a
+          href="/eventos/"
+          class="botao botao--contorno"
+        >
           ← Voltar aos eventos
         </a>
       </div>
