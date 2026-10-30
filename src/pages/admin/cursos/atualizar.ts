@@ -165,8 +165,7 @@ export const POST: APIRoute = async (Astro) => {
     );
   }
 
-  // 7. Procurar o curso existente, incluindo
-  // o estado atual de publicação.
+  // 7. Procurar o curso existente.
   const {
     data: cursoAtual,
     error: erroCurso,
@@ -192,11 +191,7 @@ export const POST: APIRoute = async (Astro) => {
     return erro("Curso não encontrado.", 404);
   }
 
-  // 8. Se o estado de publicação mudar,
-  // verificar a permissão cursos:publicar.
-  //
-  // Isto complementa o trigger de segurança
-  // que já criámos no Supabase.
+  // 8. Verificar a permissão se o estado de publicação mudar.
   if (publicado !== cursoAtual.publicado) {
     const {
       data: podePublicar,
@@ -405,7 +400,11 @@ export const POST: APIRoute = async (Astro) => {
       certificacao,
       acesso,
       perfil: perfilProfissional,
-      conteudo: conteudo || null,
+
+      // CORREÇÃO:
+      // A coluna conteudo não aceita NULL.
+      conteudo,
+
       componentes,
       cartazes,
       publicado,

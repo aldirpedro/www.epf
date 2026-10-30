@@ -64,9 +64,8 @@ export const POST: APIRoute = async (Astro) => {
   }
 
   // 4. Verificar a permissão individual para criar cursos.
-  //
-  // A função tem_permissao também reconhece
-  // automaticamente o Super Administrador ativo.
+  // A função tem_permissao reconhece automaticamente
+  // o Super Administrador ativo.
   const {
     data: podeCriar,
     error: erroPermissaoCriar,
@@ -118,7 +117,6 @@ export const POST: APIRoute = async (Astro) => {
   const publicado = formulario.get("publicado") === "true";
 
   // 6. Criar e publicar são permissões diferentes.
-  //
   // Se o curso for publicado imediatamente,
   // é necessária também a permissão cursos:publicar.
   if (publicado) {
@@ -378,7 +376,12 @@ export const POST: APIRoute = async (Astro) => {
       certificacao,
       acesso,
       perfil: perfilProfissional,
-      conteudo: conteudo || null,
+
+      // CORREÇÃO:
+      // A coluna conteudo não aceita NULL.
+      // Se estiver vazia, guardar "" em vez de null.
+      conteudo,
+
       componentes,
       cartazes,
       publicado,
