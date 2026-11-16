@@ -5,22 +5,74 @@ import Icone from './Icone.astro';
 interface Props {
   documentos: Documento[];
 }
+
 const { documentos } = Astro.props;
+
+const documentosVisiveis = documentos.filter(
+  (documento) => documento.mostrarNoWebsite !== false
+);
 ---
 
 <ul class="lista-docs">
   {
-    documentos.map((d) => {
+    documentosVisiveis.map((d) => {
+      const podeAbrir = d.permitirAbrirPdf !== false;
       const externo = d.url.startsWith('http');
+
       return (
         <li>
-          <a href={d.url} rel={externo ? 'noopener' : undefined}>
-            <Icone nome="documento" tamanho={20} />
-            <span>{d.titulo}</span>
-            <Icone nome={externo ? 'externo' : 'seta'} tamanho={16} />
-          </a>
+          {podeAbrir ? (
+            <a
+              href={d.url}
+              rel={externo ? 'noopener' : undefined}
+            >
+              <Icone nome="documento" tamanho={20} />
+              <span>{d.titulo}</span>
+              <Icone
+                nome={externo ? 'externo' : 'seta'}
+                tamanho={16}
+              />
+            </a>
+          ) : (
+            <div class="documento-restrito" aria-label={`${d.titulo} — consulta restrita`}>
+              <Icone nome="documento" tamanho={20} />
+              <span>{d.titulo}</span>
+              <span class="estado-documento">Consulta restrita</span>
+            </div>
+          )}
         </li>
       );
     })
   }
 </ul>
+
+<style>
+  .documento-restrito {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.85rem 1rem;
+    color: var(--texto-suave);
+  }
+
+  .documento-restrito > span:nth-child(2) {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .estado-documento {
+    font-size: 0.8rem;
+    white-space: nowrap;
+    opacity: 0.8;
+  }
+
+  @media (max-width: 480px) {
+    .documento-restrito {
+      flex-wrap: wrap;
+    }
+
+    .estado-documento {
+      margin-left: 2rem;
+    }
+  }
+</style>

@@ -1,0 +1,1451 @@
+---
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import { criarSupabaseServer } from "../../../lib/supabase/server";
+import { eqavet, type Documento } from "../../../data/documentos";
+
+export const prerender = false;
+
+Astro.response.headers.set("Cache-Control", "private, no-store");
+
+const supabase = criarSupabaseServer(Astro);
+
+const {
+  data: { user },
+  error: erroAuth,
+} = await supabase.auth.getUser();
+
+if (erroAuth || !user) {
+  return Astro.redirect("/admin/login");
+}
+
+const { data: perfil, error: erroPerfil } = await supabase
+  .from("perfis")
+  .select("nome, perfil, ativo")
+  .eq("id", user.id)
+  .single();
+
+if (erroPerfil || !perfil?.ativo) {
+  return Astro.redirect("/admin");
+}
+
+const [
+  { data: podeVer },
+  { data: podeEditar },
+  { data: podePublicar },
+] = await Promise.all([
+  supabase.rpc("tem_permissao", {
+    p_recurso: "paginas",
+    p_acao: "ver",
+  }),
+  supabase.rpc("tem_permissao", {
+    p_recurso: "paginas",
+    p_acao: "editar",
+  }),
+  supabase.rpc("tem_permissao", {
+    p_recurso: "paginas",
+    p_acao: "publicar",
+  }),
+]);
+
+if (
+  podeVer !== true &&
+  podeEditar !== true &&
+  podePublicar !== true
+) {
+  return Astro.redirect("/admin");
+}
+
+const [
+  { data: pagina, error: erroPagina },
+  { data: rascunho, error: erroRascunho },
+] = await Promise.all([
+  supabase
+    .from("paginas_conteudo")
+    .select("conteudo")
+    .eq("slug", "qualidade")
+    .maybeSingle(),
+
+  supabase
+    .from("paginas_rascunhos")
+    .select("conteudo")
+    .eq("slug", "qualidade")
+    .maybeSingle(),
+]);
+
+const erroLeitura = !!erroPagina || !!erroRascunho;
+
+const conteudo: Record<string, unknown> =
+  rascunho?.conteudo &&
+  typeof rascunho.conteudo === "object" &&
+  !Array.isArray(rascunho.conteudo)
+    ? rascunho.conteudo as Record<string, unknown>
+    : pagina?.conteudo &&
+        typeof pagina.conteudo === "object" &&
+        !Array.isArray(pagina.conteudo)
+      ? pagina.conteudo as Record<string, unknown>
+      : {};
+
+const texto = (chave: string, original: string): string => {
+  const valor = conteudo[chave];
+
+  return typeof valor === "string" ? valor : original;
+};
+
+const tituloPagina = texto(
+  "titulo_pagina",
+  "Qualidade · EQAVET"
+);
+
+const introducao = texto(
+  "introducao",
+  "A EPF tem o seu sistema de garantia da qualidade alinhado com o Quadro de Referência Europeu de Garantia da Qualidade para o Ensino e Formação Profissional."
+);
+
+const tituloDocumentos = texto(
+  "titulo_documentos",
+  "Documentos do sistema de qualidade"
+);
+
+const tituloCiclo = texto(
+  "titulo_ciclo",
+  "O ciclo de qualidade"
+);
+
+const fases = [
+  {
+    numero: 1,
+    nome: texto("fase_1_nome", "Planeamento"),
+    descricao: texto(
+      "fase_1_texto",
+      "Definição de metas e objetivos alinhados com as políticas europeias, nacionais e regionais."
+    ),
+  },
+  {
+    numero: 2,
+    nome: texto("fase_2_nome", "Implementação"),
+    descricao: texto(
+      "fase_2_texto",
+      "Execução dos planos de ação, com o envolvimento de alunos, docentes e parceiros."
+    ),
+  },
+  {
+    numero: 3,
+    nome: texto("fase_3_nome", "Avaliação"),
+    descricao: texto(
+      "fase_3_texto",
+      "Recolha e análise de indicadores de resultados e de processos."
+    ),
+  },
+  {
+    numero: 4,
+    nome: texto("fase_4_nome", "Revisão"),
+    descricao: texto(
+      "fase_4_texto",
+      "Ajuste das práticas a partir dos resultados, num ciclo de melhoria contínua."
+    ),
+  },
+];
+
+const documentoValido = (valor: unknown): valor is Documento => {
+  if (
+    !valor ||
+    typeof valor !== "object" ||
+    Array.isArray(valor)
+  ) {
+    return false;
+  }
+
+  const documento = valor as Record<string, unknown>;
+
+  return (
+    typeof documento.titulo === "string" &&
+    typeof documento.url === "string"
+  );
+};
+
+const documentos: Documento[] =
+  Array.isArray(conteudo.documentos) &&
+  conteudo.documentos.every(documentoValido)
+    ? conteudo.documentos
+    : eqavet;
+
+const guardado =
+  Astro.url.searchParams.get("guardado") === "1";
+
+const publicado =
+  Astro.url.searchParams.get("publicado") === "1";
+
+const erro =
+  Astro.url.searchParams.get("erro") === "1";
+
+const existeRascunho = !!rascunho;
+
+const nomePerfil =
+  perfil.perfil === "super_admin"
+    ? "Super Administrador"
+    : perfil.perfil || "Administrador";
+---
+
+<AdminLayout
+  titulo="Editar Qualidade · EQAVET"
+  nome={perfil.nome || "Administrador"}
+  perfil={nomePerfil}
+  ativo="paginas"
+>
+  <div class="editor">
+    <a href="/admin/">← Voltar ao painel</a>
+
+    <header>
+      <span class="etiqueta">GESTÃO DE PÁGINAS</span>
+      <h1>Editar Qualidade · EQAVET</h1>
+      <p>
+        Gere os textos, as fases do ciclo de qualidade
+        e os documentos EQAVET.
+      </p>
+    </header>
+
+    {
+      guardado && (
+        <div class="sucesso" role="status">
+          Rascunho guardado com sucesso.
+          A página pública ainda não foi alterada.
+        </div>
+      )
+    }
+
+    {
+      publicado && (
+        <div class="sucesso" role="status">
+          Página Qualidade publicada com sucesso.
+        </div>
+      )
+    }
+
+    {
+      (erro || erroLeitura) && (
+        <div class="erro" role="alert">
+          Ocorreu um erro. Verifica os dados e tenta novamente.
+        </div>
+      )
+    }
+
+    {
+      existeRascunho && !erroLeitura && (
+        <div class="informacao">
+          Estás a editar o rascunho da página Qualidade.
+        </div>
+      )
+    }
+
+    <form
+      id="form-qualidade"
+      action="/admin/paginas/guardar-qualidade"
+      method="POST"
+    >
+      <section class="bloco">
+        <h2>Apresentação da página</h2>
+
+        <label for="titulo_pagina">
+          Título da página
+        </label>
+
+        <input
+          id="titulo_pagina"
+          name="titulo_pagina"
+          type="text"
+          maxlength="200"
+          value={tituloPagina}
+          required
+          readonly={podeEditar !== true}
+        />
+
+        <label for="introducao">
+          Texto introdutório
+        </label>
+
+        <textarea
+          id="introducao"
+          name="introducao"
+          rows="5"
+          maxlength="5000"
+          required
+          readonly={podeEditar !== true}
+        >{introducao}</textarea>
+      </section>
+
+      <section class="bloco">
+        <h2>Documentos do sistema de qualidade</h2>
+
+        <label for="titulo_documentos">
+          Título da secção
+        </label>
+
+        <input
+          id="titulo_documentos"
+          name="titulo_documentos"
+          type="text"
+          maxlength="200"
+          value={tituloDocumentos}
+          required
+          readonly={podeEditar !== true}
+        />
+
+        <p class="ajuda">
+          Podes adicionar documentos por URL ou carregar PDFs
+          diretamente do computador. Também podes alterar
+          títulos, remover documentos e modificar a ordem
+          de apresentação. Cada PDF pode ter até 20 MB.
+        </p>
+
+        <input
+          type="hidden"
+          id="documentos_json"
+          name="documentos_json"
+          value={JSON.stringify(documentos)}
+        />
+
+        <div
+          id="lista-documentos"
+          class="documentos"
+          data-editavel={podeEditar === true ? "true" : "false"}
+        >
+          {
+            documentos.map((documento, indice) => (
+              <div class="documento" data-documento>
+                <div class="documento-cabecalho">
+                  <strong data-numero>
+                    Documento {indice + 1}
+                  </strong>
+
+                  {
+                    podeEditar === true && (
+                      <div class="documento-acoes">
+                        <button
+                          type="button"
+                          class="botao-secundario"
+                          data-subir
+                          aria-label={`Subir documento ${indice + 1}`}
+                        >
+                          ↑
+                        </button>
+
+                        <button
+                          type="button"
+                          class="botao-secundario"
+                          data-descer
+                          aria-label={`Descer documento ${indice + 1}`}
+                        >
+                          ↓
+                        </button>
+
+                        <button
+                          type="button"
+                          class="botao-remover"
+                          data-remover
+                        >
+                          Remover
+                        </button>
+                      </div>
+                    )
+                  }
+                </div>
+
+                <label>Título do documento</label>
+
+                <input
+                  type="text"
+                  data-titulo
+                  maxlength="250"
+                  value={documento.titulo}
+                  required
+                  readonly={podeEditar !== true}
+                />
+
+                <label>Endereço do documento</label>
+
+                <input
+                  type="text"
+                  data-url
+                  maxlength="2000"
+                  value={documento.url}
+                  required
+                  readonly={podeEditar !== true}
+                />
+
+                {
+                  podeEditar === true && (
+                    <div class="zona-upload">
+                      <label>Carregar ou substituir por PDF</label>
+
+                      <div class="upload-controlos">
+                        <input
+                          type="file"
+                          accept=".pdf,application/pdf"
+                          data-ficheiro
+                          aria-label={`Selecionar PDF do documento ${indice + 1}`}
+                        />
+
+                        <button
+                          type="button"
+                          class="botao-upload"
+                          data-carregar
+                        >
+                          Carregar PDF
+                        </button>
+                      </div>
+
+                      <p
+                        class="estado-upload"
+                        data-estado-upload
+                        role="status"
+                        aria-live="polite"
+                      ></p>
+                    </div>
+                  )
+                }
+
+                <label>Nota (opcional)</label>
+
+                <textarea
+                  data-nota
+                  rows="2"
+                  maxlength="1000"
+                  readonly={podeEditar !== true}
+                >{documento.nota || ""}</textarea>
+
+                <a
+                  href={documento.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="ligacao-documento"
+                  data-ligacao
+                >
+                  Abrir documento atual
+                </a>
+              </div>
+            ))
+          }
+        </div>
+
+        {
+          podeEditar === true && (
+            <button
+              type="button"
+              id="adicionar-documento"
+              class="botao-adicionar"
+            >
+              + Adicionar documento
+            </button>
+          )
+        }
+      </section>
+
+      <section class="bloco">
+        <h2>Ciclo de qualidade</h2>
+
+        <label for="titulo_ciclo">
+          Título da secção
+        </label>
+
+        <input
+          id="titulo_ciclo"
+          name="titulo_ciclo"
+          type="text"
+          maxlength="200"
+          value={tituloCiclo}
+          required
+          readonly={podeEditar !== true}
+        />
+
+        {
+          fases.map((fase) => (
+            <div class="fase">
+              <h3>Fase {fase.numero}</h3>
+
+              <label for={`fase_${fase.numero}_nome`}>
+                Nome da fase
+              </label>
+
+              <input
+                id={`fase_${fase.numero}_nome`}
+                name={`fase_${fase.numero}_nome`}
+                type="text"
+                maxlength="200"
+                value={fase.nome}
+                required
+                readonly={podeEditar !== true}
+              />
+
+              <label for={`fase_${fase.numero}_texto`}>
+                Descrição da fase
+              </label>
+
+              <textarea
+                id={`fase_${fase.numero}_texto`}
+                name={`fase_${fase.numero}_texto`}
+                rows="4"
+                maxlength="3000"
+                required
+                readonly={podeEditar !== true}
+              >{fase.descricao}</textarea>
+            </div>
+          ))
+        }
+      </section>
+
+      <div class="acoes">
+        <a
+          href="/qualidade/"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Ver página pública
+        </a>
+
+        {
+          podeEditar === true && !erroLeitura && (
+            <button
+              type="submit"
+              class="botao-guardar"
+              id="guardar-qualidade"
+            >
+              Guardar rascunho
+            </button>
+          )
+        }
+      </div>
+    </form>
+
+    {
+      podePublicar === true &&
+      existeRascunho &&
+      !erroLeitura && (
+        <form
+          action="/admin/paginas/publicar-qualidade"
+          method="POST"
+          class="form-publicar"
+        >
+          <div>
+            <strong>Publicar no website</strong>
+
+            <p>
+              Publica a última versão guardada do rascunho.
+              As alterações ainda não guardadas não serão publicadas.
+            </p>
+          </div>
+
+          <button
+            type="submit"
+            class="botao-publicar"
+            id="publicar-qualidade"
+          >
+            Publicar alterações
+          </button>
+        </form>
+      )
+    }
+  </div>
+</AdminLayout>
+
+<script>
+  interface DocumentoEditor {
+    titulo: string;
+    url: string;
+    nota?: string;
+  }
+
+  interface RespostaUpload {
+    sucesso?: boolean;
+    erro?: string;
+    mensagem?: string;
+    url?: string;
+    caminho?: string;
+    nome?: string;
+  }
+
+  const TAMANHO_MAXIMO_PDF = 20 * 1024 * 1024;
+  const MAX_DOCUMENTOS = 100;
+
+  const formulario =
+    document.querySelector<HTMLFormElement>(
+      "#form-qualidade"
+    );
+
+  const lista =
+    document.querySelector<HTMLElement>(
+      "#lista-documentos"
+    );
+
+  const campoJson =
+    document.querySelector<HTMLInputElement>(
+      "#documentos_json"
+    );
+
+  const botaoAdicionar =
+    document.querySelector<HTMLButtonElement>(
+      "#adicionar-documento"
+    );
+
+  const botaoGuardar =
+    document.querySelector<HTMLButtonElement>(
+      "#guardar-qualidade"
+    );
+
+  const botaoPublicar =
+    document.querySelector<HTMLButtonElement>(
+      "#publicar-qualidade"
+    );
+
+  const editavel =
+    lista?.dataset.editavel === "true";
+
+  let carregamentosAtivos = 0;
+  let alteracoesPorGuardar = false;
+
+  function urlValida(valor: string): boolean {
+    if (
+      valor.startsWith("/") &&
+      !valor.startsWith("//")
+    ) {
+      return !/[?#\\\u0000-\u001F\u007F]/.test(valor);
+    }
+
+    try {
+      const url = new URL(valor);
+
+      if (
+        url.username ||
+        url.password ||
+        !url.hostname
+      ) {
+        return false;
+      }
+
+      if (url.protocol === "http:") {
+        return (
+          url.hostname === "www.epfundao.edu.pt" &&
+          url.port === "8069" &&
+          url.pathname.startsWith("/page/")
+        );
+      }
+
+      return url.protocol === "https:";
+    } catch {
+      return false;
+    }
+  }
+
+  function atualizarBotoesPrincipais() {
+    if (botaoGuardar) {
+      botaoGuardar.disabled = carregamentosAtivos > 0;
+    }
+
+    if (botaoPublicar) {
+      botaoPublicar.disabled =
+        carregamentosAtivos > 0 || alteracoesPorGuardar;
+
+      botaoPublicar.title = alteracoesPorGuardar
+        ? "Guarda primeiro as alterações do rascunho."
+        : "";
+    }
+  }
+
+  function marcarAlteracoes() {
+    alteracoesPorGuardar = true;
+    atualizarBotoesPrincipais();
+  }
+
+  function atualizarNumeros() {
+    if (!lista) return;
+
+    const elementos =
+      lista.querySelectorAll<HTMLElement>(
+        "[data-documento]"
+      );
+
+    elementos.forEach((elemento, indice) => {
+      const numero =
+        elemento.querySelector<HTMLElement>(
+          "[data-numero]"
+        );
+
+      if (numero) {
+        numero.textContent = `Documento ${indice + 1}`;
+      }
+
+      const subir =
+        elemento.querySelector<HTMLButtonElement>(
+          "[data-subir]"
+        );
+
+      const descer =
+        elemento.querySelector<HTMLButtonElement>(
+          "[data-descer]"
+        );
+
+      if (subir) {
+        subir.disabled = indice === 0;
+      }
+
+      if (descer) {
+        descer.disabled =
+          indice === elementos.length - 1;
+      }
+    });
+
+    if (botaoAdicionar) {
+      botaoAdicionar.disabled =
+        elementos.length >= MAX_DOCUMENTOS;
+    }
+  }
+
+  function recolherDocumentos(): DocumentoEditor[] {
+    if (!lista) return [];
+
+    return Array.from(
+      lista.querySelectorAll<HTMLElement>(
+        "[data-documento]"
+      )
+    ).map((elemento) => {
+      const titulo =
+        elemento.querySelector<HTMLInputElement>(
+          "[data-titulo]"
+        )?.value.trim() || "";
+
+      const url =
+        elemento.querySelector<HTMLInputElement>(
+          "[data-url]"
+        )?.value.trim() || "";
+
+      const nota =
+        elemento.querySelector<HTMLTextAreaElement>(
+          "[data-nota]"
+        )?.value.trim() || "";
+
+      return {
+        titulo,
+        url,
+        ...(nota ? { nota } : {}),
+      };
+    });
+  }
+
+  function atualizarLigacao(documento: HTMLElement) {
+    const campoUrl =
+      documento.querySelector<HTMLInputElement>(
+        "[data-url]"
+      );
+
+    const ligacao =
+      documento.querySelector<HTMLAnchorElement>(
+        "[data-ligacao]"
+      );
+
+    if (!campoUrl || !ligacao) return;
+
+    const url = campoUrl.value.trim();
+
+    if (urlValida(url)) {
+      ligacao.href = url;
+      ligacao.hidden = false;
+    } else {
+      ligacao.removeAttribute("href");
+      ligacao.hidden = true;
+    }
+  }
+
+  function criarDocumento() {
+    if (!lista || !editavel) return;
+
+    if (
+      lista.querySelectorAll("[data-documento]").length >=
+      MAX_DOCUMENTOS
+    ) {
+      window.alert(
+        "O limite é de 100 documentos."
+      );
+      return;
+    }
+
+    const elemento = document.createElement("div");
+
+    elemento.className = "documento";
+    elemento.dataset.documento = "";
+
+    elemento.innerHTML = `
+      <div class="documento-cabecalho">
+        <strong data-numero>Novo documento</strong>
+        <div class="documento-acoes">
+          <button type="button" class="botao-secundario" data-subir>↑</button>
+          <button type="button" class="botao-secundario" data-descer>↓</button>
+          <button type="button" class="botao-remover" data-remover>Remover</button>
+        </div>
+      </div>
+
+      <label>Título do documento</label>
+      <input type="text" data-titulo maxlength="250" required />
+
+      <label>Endereço do documento</label>
+      <input type="text" data-url maxlength="2000" required />
+
+      <div class="zona-upload">
+        <label>Carregar PDF</label>
+        <div class="upload-controlos">
+          <input
+            type="file"
+            accept=".pdf,application/pdf"
+            data-ficheiro
+            aria-label="Selecionar ficheiro PDF"
+          />
+          <button type="button" class="botao-upload" data-carregar>
+            Carregar PDF
+          </button>
+        </div>
+        <p
+          class="estado-upload"
+          data-estado-upload
+          role="status"
+          aria-live="polite"
+        ></p>
+      </div>
+
+      <label>Nota (opcional)</label>
+      <textarea data-nota rows="2" maxlength="1000"></textarea>
+
+      <a
+        class="ligacao-documento"
+        data-ligacao
+        target="_blank"
+        rel="noopener noreferrer"
+        hidden
+      >
+        Abrir documento atual
+      </a>
+    `;
+
+    lista.appendChild(elemento);
+
+    atualizarNumeros();
+    marcarAlteracoes();
+
+    elemento
+      .querySelector<HTMLInputElement>(
+        "[data-titulo]"
+      )
+      ?.focus();
+  }
+
+  async function carregarPdf(
+    documento: HTMLElement,
+    botao: HTMLButtonElement
+  ) {
+    if (!editavel) return;
+
+    const campoFicheiro =
+      documento.querySelector<HTMLInputElement>(
+        "[data-ficheiro]"
+      );
+
+    const campoUrl =
+      documento.querySelector<HTMLInputElement>(
+        "[data-url]"
+      );
+
+    const campoTitulo =
+      documento.querySelector<HTMLInputElement>(
+        "[data-titulo]"
+      );
+
+    const estado =
+      documento.querySelector<HTMLElement>(
+        "[data-estado-upload]"
+      );
+
+    if (
+      !campoFicheiro ||
+      !campoUrl ||
+      !campoTitulo ||
+      !estado
+    ) {
+      return;
+    }
+
+    const ficheiro = campoFicheiro.files?.[0];
+
+    if (!ficheiro) {
+      estado.textContent =
+        "Seleciona primeiro um ficheiro PDF.";
+      estado.dataset.tipo = "erro";
+      return;
+    }
+
+    if (
+      ficheiro.type !== "application/pdf" ||
+      !ficheiro.name.toLowerCase().endsWith(".pdf")
+    ) {
+      estado.textContent =
+        "O ficheiro selecionado não é um PDF válido.";
+      estado.dataset.tipo = "erro";
+      return;
+    }
+
+    if (
+      ficheiro.size === 0 ||
+      ficheiro.size > TAMANHO_MAXIMO_PDF
+    ) {
+      estado.textContent =
+        "O PDF deve ter entre 1 byte e 20 MB.";
+      estado.dataset.tipo = "erro";
+      return;
+    }
+
+    const dados = new FormData();
+    dados.append("documento", ficheiro);
+
+    const urlAnterior = campoUrl.value;
+    const tituloAnterior = campoTitulo.value;
+
+    carregamentosAtivos++;
+    botao.disabled = true;
+    campoFicheiro.disabled = true;
+
+    estado.dataset.tipo = "progresso";
+    estado.textContent = "A carregar PDF...";
+
+    atualizarBotoesPrincipais();
+
+    try {
+      const resposta = await fetch(
+        "/admin/paginas/carregar-documento-qualidade",
+        {
+          method: "POST",
+          body: dados,
+          credentials: "same-origin",
+          headers: {
+            Accept: "application/json",
+          },
+        }
+      );
+
+      let resultado: RespostaUpload;
+
+      try {
+        resultado = await resposta.json();
+      } catch {
+        throw new Error(
+          "O servidor devolveu uma resposta inválida."
+        );
+      }
+
+      if (
+        !resposta.ok ||
+        resultado.sucesso !== true ||
+        !resultado.url
+      ) {
+        throw new Error(
+          resultado.erro ||
+          "Não foi possível carregar o PDF."
+        );
+      }
+
+      // A URL anterior é preservada até o carregamento
+      // terminar com sucesso.
+      campoUrl.value = resultado.url;
+
+      // Para documentos novos, usar o nome do ficheiro
+      // como título inicial, mantendo-o editável.
+      if (!tituloAnterior.trim()) {
+        campoTitulo.value = ficheiro.name
+          .replace(/\.pdf$/i, "")
+          .replace(/[_-]+/g, " ")
+          .trim()
+          .slice(0, 250);
+      }
+
+      atualizarLigacao(documento);
+      marcarAlteracoes();
+
+      estado.dataset.tipo = "sucesso";
+      estado.textContent =
+        "PDF carregado. Guarda o rascunho para associar este documento à página.";
+
+      campoFicheiro.value = "";
+    } catch (erro) {
+      campoUrl.value = urlAnterior;
+      campoTitulo.value = tituloAnterior;
+
+      estado.dataset.tipo = "erro";
+      estado.textContent =
+        erro instanceof Error
+          ? erro.message
+          : "Ocorreu um erro no carregamento.";
+    } finally {
+      carregamentosAtivos--;
+      botao.disabled = false;
+      campoFicheiro.disabled = false;
+
+      atualizarBotoesPrincipais();
+    }
+  }
+
+  botaoAdicionar?.addEventListener(
+    "click",
+    criarDocumento
+  );
+
+  lista?.addEventListener("click", (evento) => {
+    const alvo = evento.target;
+
+    if (!(alvo instanceof Element)) return;
+
+    const botao =
+      alvo.closest<HTMLButtonElement>("button");
+
+    if (!botao) return;
+
+    const documento =
+      botao.closest<HTMLElement>(
+        "[data-documento]"
+      );
+
+    if (!documento || !lista || !editavel) return;
+
+    if (botao.hasAttribute("data-carregar")) {
+      void carregarPdf(documento, botao);
+      return;
+    }
+
+    if (botao.hasAttribute("data-remover")) {
+      documento.remove();
+      marcarAlteracoes();
+    } else if (
+      botao.hasAttribute("data-subir")
+    ) {
+      const anterior =
+        documento.previousElementSibling;
+
+      if (anterior) {
+        lista.insertBefore(documento, anterior);
+        marcarAlteracoes();
+      }
+    } else if (
+      botao.hasAttribute("data-descer")
+    ) {
+      const seguinte =
+        documento.nextElementSibling;
+
+      if (seguinte) {
+        lista.insertBefore(seguinte, documento);
+        marcarAlteracoes();
+      }
+    }
+
+    atualizarNumeros();
+  });
+
+  lista?.addEventListener("input", (evento) => {
+    if (!editavel) return;
+
+    const alvo = evento.target;
+
+    if (!(alvo instanceof HTMLElement)) return;
+
+    const documento =
+      alvo.closest<HTMLElement>(
+        "[data-documento]"
+      );
+
+    if (!documento) return;
+
+    if (
+      alvo.matches("[data-titulo]") ||
+      alvo.matches("[data-url]") ||
+      alvo.matches("[data-nota]")
+    ) {
+      marcarAlteracoes();
+    }
+
+    if (alvo.matches("[data-url]")) {
+      atualizarLigacao(documento);
+    }
+  });
+
+  formulario?.addEventListener(
+    "input",
+    (evento) => {
+      const alvo = evento.target;
+
+      if (!(alvo instanceof HTMLElement)) return;
+
+      if (
+        alvo.closest("#lista-documentos") ||
+        alvo.matches('input[type="file"]')
+      ) {
+        return;
+      }
+
+      marcarAlteracoes();
+    }
+  );
+
+  formulario?.addEventListener(
+    "submit",
+    (evento) => {
+      if (!campoJson || !editavel) return;
+
+      if (carregamentosAtivos > 0) {
+        evento.preventDefault();
+
+        window.alert(
+          "Aguarda até todos os PDFs terminarem de carregar."
+        );
+
+        return;
+      }
+
+      const documentos = recolherDocumentos();
+
+      const invalidos = documentos.some(
+        (documento) =>
+          !documento.titulo ||
+          documento.titulo.length > 250 ||
+          !documento.url ||
+          documento.url.length > 2000 ||
+          !urlValida(documento.url) ||
+          (documento.nota?.length || 0) > 1000
+      );
+
+      if (
+        documentos.length > MAX_DOCUMENTOS ||
+        invalidos
+      ) {
+        evento.preventDefault();
+
+        window.alert(
+          "Verifica os documentos. Cada documento precisa de um título e de um endereço válido. São aceites HTTPS, caminhos internos e os links originais da EPF."
+        );
+
+        return;
+      }
+
+      campoJson.value = JSON.stringify(documentos);
+    }
+  );
+
+  botaoPublicar?.closest("form")?.addEventListener(
+    "submit",
+    (evento) => {
+      if (
+        carregamentosAtivos > 0 ||
+        alteracoesPorGuardar
+      ) {
+        evento.preventDefault();
+
+        window.alert(
+          "Guarda primeiro o rascunho e aguarda o fim dos carregamentos antes de publicar."
+        );
+      }
+    }
+  );
+
+  lista
+    ?.querySelectorAll<HTMLElement>(
+      "[data-documento]"
+    )
+    .forEach(atualizarLigacao);
+
+  atualizarNumeros();
+  atualizarBotoesPrincipais();
+</script>
+
+<style>
+  .editor {
+    max-width: 920px;
+  }
+
+  .editor > a {
+    color: #267a4b;
+    font-weight: 600;
+  }
+
+  header {
+    margin: 28px 0;
+  }
+
+  .etiqueta {
+    color: #267a4b;
+    font-size: 12px;
+    font-weight: 800;
+  }
+
+  h1 {
+    margin: 10px 0;
+    font-size: 32px;
+    color: #152d43;
+  }
+
+  header p,
+  .ajuda {
+    color: #75869a;
+  }
+
+  form {
+    display: grid;
+    gap: 22px;
+  }
+
+  .bloco {
+    display: grid;
+    gap: 12px;
+    padding: 28px;
+    background: white;
+    border: 1px solid #e4eaf0;
+    border-radius: 14px;
+  }
+
+  h2 {
+    margin: 0 0 10px;
+    font-size: 20px;
+  }
+
+  h3 {
+    margin: 0 0 8px;
+    font-size: 17px;
+    color: #152d43;
+  }
+
+  label {
+    font-weight: 700;
+    font-size: 14px;
+  }
+
+  input,
+  textarea {
+    width: 100%;
+    padding: 13px;
+    border: 1px solid #dce5ed;
+    border-radius: 9px;
+    font: inherit;
+  }
+
+  textarea {
+    resize: vertical;
+  }
+
+  input[readonly],
+  textarea[readonly] {
+    background: #f4f7fa;
+  }
+
+  .ajuda {
+    margin: 0;
+    font-size: 13px;
+  }
+
+  .documentos {
+    display: grid;
+    gap: 16px;
+  }
+
+  .documento,
+  .fase {
+    display: grid;
+    gap: 12px;
+    padding: 20px;
+    background: #f8fafc;
+    border: 1px solid #e4eaf0;
+    border-radius: 10px;
+  }
+
+  .documento-cabecalho,
+  .documento-acoes {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .documento-cabecalho {
+    justify-content: space-between;
+    flex-wrap: wrap;
+  }
+
+  .documento-cabecalho strong {
+    color: #152d43;
+  }
+
+  .documento-acoes button,
+  .botao-adicionar {
+    width: auto;
+    padding: 9px 13px;
+    font-size: 13px;
+  }
+
+  .botao-secundario {
+    background: #e5edf4;
+    color: #152d43;
+  }
+
+  .botao-remover {
+    background: #a52525;
+  }
+
+  .botao-adicionar {
+    justify-self: start;
+    background: #267a4b;
+  }
+
+  .zona-upload {
+    display: grid;
+    gap: 10px;
+    padding: 15px;
+    border: 1px dashed #bfd4c7;
+    border-radius: 9px;
+    background: #f0f7f2;
+  }
+
+  .upload-controlos {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .upload-controlos input[type="file"] {
+    flex: 1 1 230px;
+    min-width: 0;
+    background: white;
+    padding: 9px;
+    font-size: 13px;
+  }
+
+  .botao-upload {
+    background: #267a4b;
+    flex-shrink: 0;
+  }
+
+  .estado-upload {
+    margin: 0;
+    font-size: 13px;
+    min-height: 18px;
+  }
+
+  .estado-upload[data-tipo="progresso"] {
+    color: #28506f;
+  }
+
+  .estado-upload[data-tipo="sucesso"] {
+    color: #17603b;
+    font-weight: 600;
+  }
+
+  .estado-upload[data-tipo="erro"] {
+    color: #a52525;
+    font-weight: 600;
+  }
+
+  .ligacao-documento {
+    color: #267a4b;
+    font-size: 13px;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+  }
+
+  .ligacao-documento[hidden] {
+    display: none;
+  }
+
+  .acoes {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 15px;
+  }
+
+  button {
+    padding: 14px 24px;
+    border: 0;
+    border-radius: 9px;
+    color: white;
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .botao-guardar {
+    background: #267a4b;
+  }
+
+  .form-publicar {
+    margin-top: 22px;
+    padding: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    background: white;
+    border: 1px solid #dce5ed;
+    border-radius: 14px;
+  }
+
+  .form-publicar strong {
+    color: #152d43;
+  }
+
+  .form-publicar p {
+    margin: 7px 0 0;
+    color: #75869a;
+    font-size: 13px;
+  }
+
+  .botao-publicar {
+    flex-shrink: 0;
+    background: #152d43;
+  }
+
+  .sucesso,
+  .erro,
+  .informacao {
+    padding: 15px;
+    border-radius: 9px;
+    margin-bottom: 18px;
+  }
+
+  .sucesso {
+    background: #e8f5ec;
+    color: #17603b;
+  }
+
+  .erro {
+    background: #fff0f0;
+    color: #a52525;
+  }
+
+  .informacao {
+    background: #edf4fa;
+    color: #28506f;
+  }
+
+  @media (max-width: 600px) {
+    .bloco,
+    .documento,
+    .fase {
+      padding: 15px;
+    }
+
+    .acoes,
+    .form-publicar {
+      flex-direction: column;
+      align-items: stretch;
+    }
+
+    .upload-controlos {
+      flex-direction: column;
+      align-items: stretch;
+    }
+  }
+</style>

@@ -32,6 +32,9 @@ const cartaz = d.cartazes?.[0];
 
 const cartazExterno =
   typeof cartaz === 'string' ? cartaz : null;
+
+const cartazLocal =
+  cartaz && typeof cartaz !== 'string' ? cartaz : null;
 ---
 
 <article class:list={['cartao', { 'cartao--cartaz': cartaz }]}>
@@ -44,15 +47,15 @@ const cartazExterno =
           class="cartaz"
           loading="lazy"
         />
-      ) : (
+      ) : cartazLocal ? (
         <Image
-          src={cartaz}
+          src={cartazLocal}
           alt={`Cartaz do curso ${d.titulo}`}
           widths={[320, 480, 640]}
           sizes="(max-width: 600px) 100vw, 300px"
           class="cartaz"
         />
-      )
+      ) : null
     ) : (
       <div class="icone-caixa">
         <Icone nome={d.icone || 'formacao'} />

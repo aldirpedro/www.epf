@@ -1,33 +1,216 @@
 ---
 import Pagina from '../layouts/Pagina.astro';
 import ListaDocumentos from '../components/ListaDocumentos.astro';
-import { eqavet } from '../data/documentos';
+import { eqavet, type Documento } from '../data/documentos';
+import { criarSupabaseServer } from '../lib/supabase/server';
+
+export const prerender = false;
+
+Astro.response.headers.set('Cache-Control', 'no-store');
+
+const supabase = criarSupabaseServer(Astro);
+
+const { data: pagina, error } = await supabase
+  .from('paginas_conteudo')
+  .select('conteudo')
+  .eq('slug', 'qualidade')
+  .eq('publicado', true)
+  .maybeSingle();
+
+if (error) {
+  console.error(
+    'Erro ao carregar a página Qualidade:',
+    error.message
+  );
+}
+
+const conteudo: Record<string, unknown> =
+  pagina?.conteudo &&
+  typeof pagina.conteudo === 'object' &&
+  !Array.isArray(pagina.conteudo)
+    ? pagina.conteudo as Record<string, unknown>
+    : {};
+
+const texto = (chave: string, original: string): string => {
+  const valor = conteudo[chave];
+
+  return typeof valor === 'string' && valor.trim()
+    ? valor.trim()
+    : original;
+};
+
+const tituloPagina = texto(
+  'titulo_pagina',
+  'Qualidade · EQAVET'
+);
+
+const introducao = texto(
+  'introducao',
+  'A EPF tem o seu sistema de garantia da qualidade alinhado com o Quadro de Referência Europeu de Garantia da Qualidade para o Ensino e Formação Profissional.'
+);
+
+const tituloDocumentos = texto(
+  'titulo_documentos',
+  'Documentos do sistema de qualidade'
+);
+
+const tituloCiclo = texto(
+  'titulo_ciclo',
+  'O ciclo de qualidade'
+);
 
 const fases = [
-  { nome: 'Planeamento', texto: 'Definição de metas e objetivos alinhados com as políticas europeias, nacionais e regionais.' },
-  { nome: 'Implementação', texto: 'Execução dos planos de ação, com o envolvimento de alunos, docentes e parceiros.' },
-  { nome: 'Avaliação', texto: 'Recolha e análise de indicadores de resultados e de processos.' },
-  { nome: 'Revisão', texto: 'Ajuste das práticas a partir dos resultados, num ciclo de melhoria contínua.' },
+  {
+    nome: texto('fase_1_nome', 'Planeamento'),
+    texto: texto(
+      'fase_1_texto',
+      'Definição de metas e objetivos alinhados com as políticas europeias, nacionais e regionais.'
+    ),
+  },
+  {
+    nome: texto('fase_2_nome', 'Implementação'),
+    texto: texto(
+      'fase_2_texto',
+      'Execução dos planos de ação, com o envolvimento de alunos, docentes e parceiros.'
+    ),
+  },
+  {
+    nome: texto('fase_3_nome', 'Avaliação'),
+    texto: texto(
+      'fase_3_texto',
+      'Recolha e análise de indicadores de resultados e de processos.'
+    ),
+  },
+  {
+    nome: texto('fase_4_nome', 'Revisão'),
+    texto: texto(
+      'fase_4_texto',
+      'Ajuste das práticas a partir dos resultados, num ciclo de melhoria contínua.'
+    ),
+  },
 ];
+
+// Validar os endereços dos documentos antes de os apresentar.
+function urlValida(valor: string): boolean {
+  if (
+    valor.startsWith('/') &&
+    !valor.startsWith('//')
+  ) {
+    return !/[?#\\\u0000-\u001F\u007F]/.test(valor);
+  }
+
+  try {
+    const url = new URL(valor);
+
+    if (
+      url.username ||
+      url.password ||
+      !url.hostname
+    ) {
+      return false;
+    }
+
+    // Compatibilidade com os documentos do antigo website EPF.
+    if (url.protocol === 'http:') {
+      return (
+        url.hostname === 'www.epfundao.edu.pt' &&
+        url.port === '8069' &&
+        url.pathname.startsWith('/page/')
+      );
+    }
+
+    // Inclui os PDFs públicos do Supabase Storage.
+    return url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+const documentoValido = (valor: unknown): valor is Documento => {
+  if (
+    !valor ||
+    typeof valor !== 'object' ||
+    Array.isArray(valor)
+  ) {
+    return false;
+  }
+
+  const documento = valor as Record<string, unknown>;
+
+  if (
+    typeof documento.titulo !== 'string' ||
+    typeof documento.url !== 'string'
+  ) {
+    return false;
+  }
+
+  const titulo = documento.titulo.trim();
+  const url = documento.url.trim();
+
+  if (
+    !titulo ||
+    titulo.length > 250 ||
+    !url ||
+    url.length > 2000 ||
+    !urlValida(url)
+  ) {
+    return false;
+  }
+
+  if (
+    documento.nota !== undefined &&
+    (
+      typeof documento.nota !== 'string' ||
+      documento.nota.length > 1000
+    )
+  ) {
+    return false;
+  }
+
+  return true;
+};
+
+// Usar os documentos publicados no painel administrativo.
+// Na ausência dessa lista, manter os documentos originais.
+// Uma lista vazia publicada é respeitada.
+const documentosPublicados = conteudo.documentos;
+
+const documentos: Documento[] =
+  Array.isArray(documentosPublicados) &&
+  documentosPublicados.length <= 100 &&
+  documentosPublicados.every(documentoValido)
+    ? documentosPublicados.map((documento) => ({
+        titulo: documento.titulo.trim(),
+        url: documento.url.trim(),
+        ...(typeof documento.nota === 'string' &&
+        documento.nota.trim()
+          ? { nota: documento.nota.trim() }
+          : {}),
+      }))
+    : eqavet;
 ---
 
 <Pagina
-  titulo="Qualidade · EQAVET"
-  intro="A EPF tem o seu sistema de garantia da qualidade alinhado com o Quadro de Referência Europeu de Garantia da Qualidade para o Ensino e Formação Profissional."
+  titulo={tituloPagina}
+  intro={introducao}
   migalhas={[{ nome: 'A Escola', url: '/escola/' }]}
 >
   <section class="seccao">
     <div class="contentor duas-colunas">
       <div>
-        <h2>Documentos do sistema de qualidade</h2>
-        <ListaDocumentos documentos={eqavet} />
+        <h2>{tituloDocumentos}</h2>
+
+        <ListaDocumentos documentos={documentos} />
       </div>
+
       <aside>
-        <h2>O ciclo de qualidade</h2>
+        <h2>{tituloCiclo}</h2>
+
         <ol class="ciclo">
           {fases.map((f, i) => (
             <li>
               <span>{i + 1}</span>
+
               <div>
                 <strong>{f.nome}</strong>
                 <p>{f.texto}</p>
@@ -48,10 +231,12 @@ const fases = [
     display: grid;
     gap: 1rem;
   }
+
   .ciclo li {
     display: flex;
     gap: 1rem;
   }
+
   .ciclo span {
     flex: none;
     display: grid;
@@ -63,6 +248,7 @@ const fases = [
     color: var(--verde-escuro);
     font-weight: 700;
   }
+
   .ciclo p {
     margin: 0.15rem 0 0;
     font-size: 0.93rem;

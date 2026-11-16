@@ -61,7 +61,7 @@ const componentes: Componente[] = Array.isArray(d.componentes)
         nome: item.nome as string,
         disciplinas: Array.isArray(item.disciplinas)
           ? item.disciplinas.filter(
-              (disciplina): disciplina is string =>
+              (disciplina: string | null | undefined): disciplina is string =>
                 typeof disciplina === 'string'
             )
           : [],
@@ -82,7 +82,7 @@ const outrosCartazes = cartazes.slice(1);
 // O conteúdo textual é guardado no Supabase.
 const paragrafos = (d.conteudo ?? '')
   .split(/\n\s*\n/)
-  .map((paragrafo) => paragrafo.trim())
+  .map((paragrafo: string) => paragrafo.trim())
   .filter(Boolean);
 ---
 
@@ -104,7 +104,7 @@ const paragrafos = (d.conteudo ?? '')
         {
           paragrafos.length > 0 && (
             <div class="prosa">
-              {paragrafos.map((paragrafo) => (
+              {paragrafos.map((paragrafo: string) => (
                 <p>{paragrafo}</p>
               ))}
             </div>

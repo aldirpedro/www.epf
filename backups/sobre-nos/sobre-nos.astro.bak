@@ -1,0 +1,457 @@
+---
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import { criarSupabaseServer } from "../../../lib/supabase/server";
+
+export const prerender = false;
+
+Astro.response.headers.set("Cache-Control", "private, no-store");
+
+const supabase = criarSupabaseServer(Astro);
+
+const {
+  data: { user },
+  error: erroAuth,
+} = await supabase.auth.getUser();
+
+if (erroAuth || !user) {
+  return Astro.redirect("/admin/login");
+}
+
+const { data: perfil, error: erroPerfil } = await supabase
+  .from("perfis")
+  .select("nome, perfil, ativo")
+  .eq("id", user.id)
+  .single();
+
+if (erroPerfil || !perfil?.ativo) {
+  return Astro.redirect("/admin");
+}
+
+const [
+  { data: podeVer },
+  { data: podeEditar },
+  { data: podePublicar },
+] = await Promise.all([
+  supabase.rpc("tem_permissao", {
+    p_recurso: "paginas",
+    p_acao: "ver",
+  }),
+  supabase.rpc("tem_permissao", {
+    p_recurso: "paginas",
+    p_acao: "editar",
+  }),
+  supabase.rpc("tem_permissao", {
+    p_recurso: "paginas",
+    p_acao: "publicar",
+  }),
+]);
+
+if (
+  podeVer !== true &&
+  podeEditar !== true &&
+  podePublicar !== true
+) {
+  return Astro.redirect("/admin");
+}
+
+const [
+  { data: pagina, error: erroPagina },
+  { data: rascunho, error: erroRascunho },
+] = await Promise.all([
+  supabase
+    .from("paginas_conteudo")
+    .select("conteudo, publicado")
+    .eq("slug", "sobre-nos")
+    .maybeSingle(),
+
+  supabase
+    .from("paginas_rascunhos")
+    .select("conteudo, atualizado_em")
+    .eq("slug", "sobre-nos")
+    .maybeSingle(),
+]);
+
+if (erroPagina) {
+  console.error("Erro ao consultar página:", erroPagina.message);
+}
+
+if (erroRascunho) {
+  console.error("Erro ao consultar rascunho:", erroRascunho.message);
+}
+
+const conteudo = rascunho?.conteudo ?? pagina?.conteudo ?? {};
+
+const missaoTitulo =
+  typeof conteudo.missao_titulo === "string"
+    ? conteudo.missao_titulo
+    : "Formação com exigência e inovação";
+
+const missaoTexto =
+  typeof conteudo.missao_texto === "string"
+    ? conteudo.missao_texto
+    : `Educamos e qualificamos cidadãos, proporcionando-lhes formação com exigência e inovação que lhes permita um bom desempenho profissional e, simultaneamente, responda às exigências do mercado laboral regional, valorizando as atitudes pessoais e profissionais.`;
+
+const missaoComplemento =
+  typeof conteudo.missao_complemento === "string"
+    ? conteudo.missao_complemento
+    : `A EPF considera que o sucesso da sua missão assenta, em primeira instância, nos recursos humanos — professores e funcionários. Desde o início da atividade, promoveu uma política de contratação sem termo, de forma a potenciar a estabilidade dos docentes e a fomentar a qualidade da formação ministrada.`;
+
+const missaoFinal =
+  typeof conteudo.missao_final === "string"
+    ? conteudo.missao_final
+    : "Excelente relacionamento entre professores e alunos, estágios em empresas e parcerias internacionais fazem parte do dia a dia da escola.";
+
+const historiaTitulo =
+  typeof conteudo.historia_titulo === "string"
+    ? conteudo.historia_titulo
+    : "Mais de três décadas a formar profissionais";
+
+const marcosOriginais = [
+  {
+    ano: "1992",
+    texto: "Criação da escola por Contrato-Programa celebrado a 29 de julho entre a Câmara Municipal, a Associação Comercial e Industrial do Fundão e o Ministério da Educação. No primeiro ano, 48 alunos em duas turmas do Curso Técnico de Serviços Comerciais.",
+  },
+  {
+    ano: "1993",
+    texto: "Nasce o Curso Técnico de Construção Civil. A escola passa a ter 5 turmas, uma delas de um Curso de Especialização Tecnológica em Gestão de Stocks.",
+  },
+  {
+    ano: "1995",
+    texto: "Entra em funcionamento o Curso de Hotelaria/Restauração e a escola atinge as 7 turmas.",
+  },
+  {
+    ano: "1996",
+    texto: "É criado o Curso de Operador de Construção Civil, de nível II de qualificação profissional. A escola atinge as 9 turmas.",
+  },
+  {
+    ano: "1998",
+    texto: "Primeiros estágios europeus de alunos e professores, no âmbito do programa Leonardo da Vinci.",
+  },
+  {
+    ano: "1999",
+    texto: "É criado o Curso Técnico de Mecânica/Gás e a escola atinge as 11 turmas.",
+  },
+  {
+    ano: "2016",
+    texto: "A Agência Nacional Erasmus+ atribui à EPF o Certificado de Qualidade VET Mobility Charter.",
+  },
+];
+
+const marcos = Array.isArray(conteudo.marcos)
+  ? conteudo.marcos
+  : marcosOriginais;
+
+const marcosTexto = marcos
+  .map((m) => `${m.ano} | ${m.texto}`)
+  .join("\n");
+
+const guardado = Astro.url.searchParams.get("guardado") === "1";
+const erro = Astro.url.searchParams.get("erro") === "1";
+
+const existeRascunho = !!rascunho;
+
+const nomePerfil =
+  perfil.perfil === "super_admin"
+    ? "Super Administrador"
+    : perfil.perfil || "Administrador";
+
+const erroLeitura = !!erroPagina || !!erroRascunho;
+---
+
+<AdminLayout
+  titulo="Editar Sobre Nós"
+  nome={perfil.nome || "Administrador"}
+  perfil={nomePerfil}
+>
+  <div class="editor">
+    <a href="/admin/">← Voltar ao painel</a>
+
+    <header>
+      <span class="etiqueta">GESTÃO DE PÁGINAS</span>
+      <h1>Editar página Sobre Nós</h1>
+      <p>
+        Gere os conteúdos institucionais da EPF.
+        As alterações guardadas não são publicadas automaticamente.
+      </p>
+    </header>
+
+    {
+      guardado && (
+        <div class="sucesso" role="status">
+          Rascunho guardado com sucesso.
+          O website público não foi alterado.
+        </div>
+      )
+    }
+
+    {
+      (erro || erroLeitura) && (
+        <div class="erro" role="alert">
+          Ocorreu um erro. Verifica os dados e tenta novamente.
+        </div>
+      )
+    }
+
+    {
+      existeRascunho && !erroLeitura && (
+        <div class="informacao" role="status">
+          Estás a visualizar a versão de rascunho desta página.
+        </div>
+      )
+    }
+
+    {
+      !existeRascunho && !erroLeitura && (
+        <div class="informacao">
+          Ainda não existe um rascunho guardado.
+          Os campos apresentam os conteúdos atualmente disponíveis.
+        </div>
+      )
+    }
+
+    <form action="/admin/paginas/guardar" method="POST">
+      <section class="bloco">
+        <h2>Missão da escola</h2>
+
+        <label for="missao_titulo">Título da missão</label>
+        <input
+          id="missao_titulo"
+          name="missao_titulo"
+          type="text"
+          maxlength="200"
+          value={missaoTitulo}
+          required
+          readonly={podeEditar !== true}
+        />
+
+        <label for="missao_texto">Texto principal</label>
+        <textarea
+          id="missao_texto"
+          name="missao_texto"
+          rows="6"
+          required
+          readonly={podeEditar !== true}
+        >{missaoTexto}</textarea>
+
+        <label for="missao_complemento">Texto complementar</label>
+        <textarea
+          id="missao_complemento"
+          name="missao_complemento"
+          rows="6"
+          required
+          readonly={podeEditar !== true}
+        >{missaoComplemento}</textarea>
+
+        <label for="missao_final">Parágrafo final</label>
+        <textarea
+          id="missao_final"
+          name="missao_final"
+          rows="3"
+          required
+          readonly={podeEditar !== true}
+        >{missaoFinal}</textarea>
+      </section>
+
+      <section class="bloco">
+        <h2>História da escola</h2>
+
+        <label for="historia_titulo">Título da cronologia</label>
+        <input
+          id="historia_titulo"
+          name="historia_titulo"
+          type="text"
+          maxlength="200"
+          value={historiaTitulo}
+          required
+          readonly={podeEditar !== true}
+        />
+
+        <label for="marcos">Marcos históricos</label>
+
+        <p class="ajuda">
+          Coloca um marco por linha, no formato: ANO | Descrição.
+        </p>
+
+        <textarea
+          id="marcos"
+          name="marcos"
+          rows="14"
+          required
+          readonly={podeEditar !== true}
+        >{marcosTexto}</textarea>
+      </section>
+
+      <div class="acoes">
+        <a
+          href="/escola/"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Ver página atual
+        </a>
+
+        {
+          podeEditar === true && !erroLeitura && (
+            <button type="submit">
+              Guardar rascunho
+            </button>
+          )
+        }
+      </div>
+
+      {
+        podeEditar !== true && (
+          <p class="ajuda">
+            Tens permissão para consultar esta página,
+            mas não para guardar alterações.
+          </p>
+        )
+      }
+    </form>
+
+    {
+      podePublicar === true && (
+        <div class="informacao">
+          Tens permissão para publicar.
+          A funcionalidade de publicação será adicionada
+          numa fase seguinte.
+        </div>
+      )
+    }
+  </div>
+</AdminLayout>
+
+<style>
+  .editor {
+    max-width: 920px;
+  }
+
+  .editor > a {
+    color: #267a4b;
+    font-weight: 600;
+  }
+
+  header {
+    margin: 28px 0;
+  }
+
+  .etiqueta {
+    color: #267a4b;
+    font-size: 12px;
+    font-weight: 800;
+  }
+
+  h1 {
+    margin: 10px 0;
+    font-size: 32px;
+    color: #152d43;
+  }
+
+  header p,
+  .ajuda {
+    color: #75869a;
+  }
+
+  form {
+    display: grid;
+    gap: 22px;
+  }
+
+  .bloco {
+    display: grid;
+    gap: 12px;
+    padding: 28px;
+    background: white;
+    border: 1px solid #e4eaf0;
+    border-radius: 14px;
+  }
+
+  h2 {
+    margin: 0 0 10px;
+    font-size: 20px;
+  }
+
+  label {
+    font-weight: 700;
+    font-size: 14px;
+  }
+
+  input,
+  textarea {
+    width: 100%;
+    padding: 13px;
+    border: 1px solid #dce5ed;
+    border-radius: 9px;
+    font: inherit;
+  }
+
+  textarea {
+    resize: vertical;
+  }
+
+  input[readonly],
+  textarea[readonly] {
+    background: #f4f7fa;
+  }
+
+  .ajuda {
+    margin: 0;
+    font-size: 13px;
+  }
+
+  .acoes {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 15px;
+  }
+
+  button {
+    padding: 14px 24px;
+    background: #267a4b;
+    border: 0;
+    border-radius: 9px;
+    color: white;
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  button:hover {
+    background: #1d613b;
+  }
+
+  .sucesso,
+  .erro,
+  .informacao {
+    padding: 15px;
+    border-radius: 9px;
+    margin-bottom: 18px;
+  }
+
+  .sucesso {
+    background: #e8f5ec;
+    color: #17603b;
+  }
+
+  .erro {
+    background: #fff0f0;
+    color: #a52525;
+  }
+
+  .informacao {
+    background: #edf4fa;
+    color: #28506f;
+  }
+
+  @media (max-width: 600px) {
+    .bloco {
+      padding: 18px;
+    }
+
+    .acoes {
+      flex-direction: column;
+      align-items: stretch;
+    }
+  }
+</style>

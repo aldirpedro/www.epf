@@ -1,0 +1,1182 @@
+---
+import { criarSupabaseServer } from "../../../lib/supabase/server";
+
+export const prerender = false;
+
+Astro.response.headers.set("Cache-Control", "private, no-store");
+
+const supabase = criarSupabaseServer(Astro);
+
+const {
+  data: { user },
+  error: erroAutenticacao,
+} = await supabase.auth.getUser();
+
+if (erroAutenticacao || !user) {
+  return Astro.redirect("/admin/login");
+}
+
+const { data: perfil, error: erroPerfil } = await supabase
+  .from("perfis")
+  .select("ativo")
+  .eq("id", user.id)
+  .single();
+
+if (erroPerfil || !perfil?.ativo) {
+  return Astro.redirect("/admin");
+}
+
+const acoes = ["ver", "editar", "publicar", "eliminar"] as const;
+
+const verificacoes = await Promise.all(
+  acoes.map(async (acao) => {
+    const { data, error } = await supabase.rpc("tem_permissao", {
+      p_recurso: "documentacao",
+      p_acao: acao,
+    });
+
+    if (error) {
+      console.error(
+        `Erro ao verificar permissão documentacao:${acao}:`,
+        error.message
+      );
+    }
+
+    return [acao, !error && data === true] as const;
+  })
+);
+
+const permissoes = Object.fromEntries(verificacoes) as Record<
+  (typeof acoes)[number],
+  boolean
+>;
+
+if (!Object.values(permissoes).some(Boolean)) {
+  return Astro.redirect("/admin/documentacao/");
+}
+
+const id = Astro.params.id ?? "";
+
+const uuidValido =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+    id
+  );
+
+if (!uuidValido) {
+  return new Response("Documento não encontrado.", {
+    status: 404,
+  });
+}
+
+const { data: documento, error: erroDocumento } = await supabase
+  .from("documentacao")
+  .select(
+    "id, titulo, descricao, secao, ano_letivo, ordem, url_externa, caminho_pdf, mostrar_no_website, permitir_abrir_pdf, publicado, criado_em, atualizado_em"
+  )
+  .eq("id", id)
+  .maybeSingle();
+
+if (erroDocumento) {
+  console.error(
+    "Erro ao consultar documento:",
+    erroDocumento.message
+  );
+
+  return new Response("Não foi possível consultar o documento.", {
+    status: 500,
+  });
+}
+
+if (!documento) {
+  return new Response("Documento não encontrado.", {
+    status: 404,
+  });
+}
+
+// A edição de documentos publicados exige também
+// a permissão documentacao:publicar.
+const podeEditar =
+  permissoes.editar &&
+  (!documento.publicado || permissoes.publicar);
+
+const podePublicar =
+  permissoes.publicar && !documento.publicado;
+
+// A substituição do PDF exige as mesmas permissões da edição.
+const podeSubstituirPdf = podeEditar;
+
+// A eliminação é independente da edição e da publicação.
+// Pode ser efetuada em documentos publicados ou rascunhos.
+const podeEliminar = permissoes.eliminar;
+
+const estado = documento.publicado ? "Publicado" : "Rascunho";
+
+const erro = Astro.url.searchParams.get("erro");
+const guardado = Astro.url.searchParams.get("guardado") === "1";
+const publicado = Astro.url.searchParams.get("publicado") === "1";
+const pdfSubstituido =
+  Astro.url.searchParams.get("pdf_substituido") === "1";
+
+const mensagem =
+  erro === "permissao"
+    ? "Não tens autorização para realizar esta operação."
+    : erro === "validacao"
+      ? "Os dados enviados não são válidos."
+      : erro === "guardar"
+        ? "Não foi possível guardar as alterações."
+        : erro === "publicar"
+          ? "Não foi possível publicar o documento."
+          : erro === "pdf"
+            ? "Não foi possível substituir o PDF. Verifica o ficheiro e tenta novamente."
+            : erro === "eliminar"
+              ? "Não foi possível eliminar o documento."
+              : publicado
+                ? "O documento foi publicado com sucesso."
+                : pdfSubstituido
+                  ? "O PDF foi substituído com sucesso."
+                  : guardado
+                    ? "As alterações foram guardadas com sucesso."
+                    : null;
+
+const mensagemSucesso =
+  publicado || guardado || pdfSubstituido;
+---
+
+<html lang="pt">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Editar Documento | EPF</title>
+  </head>
+
+  <body>
+    <main>
+      <a href="/admin/documentacao/">
+        ← Voltar à gestão de documentação
+      </a>
+
+      <div class="cabecalho">
+        <div>
+          <h1>Documento institucional</h1>
+
+          <p class="introducao">
+            Consulta os dados do documento e, quando autorizado,
+            altera as suas informações e opções de visibilidade.
+          </p>
+        </div>
+
+        <span
+          class:list={[
+            "estado",
+            documento.publicado ? "publicado" : "rascunho",
+          ]}
+        >
+          {estado}
+        </span>
+      </div>
+
+      {
+        mensagem && (
+          <p
+            class:list={[
+              "mensagem",
+              mensagemSucesso ? "sucesso" : "erro",
+            ]}
+            role="status"
+          >
+            {mensagem}
+          </p>
+        )
+      }
+
+      {
+        documento.publicado && podeEditar && (
+          <div class="aviso">
+            <strong>Documento publicado</strong>
+
+            <p>
+              Podes alterar as informações e as opções de visibilidade
+              deste documento. Depois de guardares, as alterações
+              ficam imediatamente disponíveis no website público,
+              quando aplicável.
+            </p>
+          </div>
+        )
+      }
+
+      {
+        !podeEditar && (
+          <div class="aviso">
+            <strong>Consulta sem edição</strong>
+
+            <p>
+              Podes consultar os dados deste documento,
+              mas não tens as permissões necessárias para os alterar.
+              A edição de documentos publicados exige as permissões
+              de editar e publicar.
+            </p>
+          </div>
+        )
+      }
+
+      <form
+        action="/admin/documentacao/guardar"
+        method="POST"
+      >
+        <input
+          type="hidden"
+          name="id"
+          value={documento.id}
+        />
+
+        <fieldset disabled={!podeEditar}>
+          <legend>Informação principal</legend>
+
+          <div class="grelha">
+            <div class="campo largo">
+              <label for="titulo">
+                Título do documento *
+              </label>
+
+              <input
+                id="titulo"
+                name="titulo"
+                type="text"
+                required
+                maxlength="240"
+                value={documento.titulo}
+              />
+            </div>
+
+            <div class="campo largo">
+              <label for="descricao">
+                Descrição
+              </label>
+
+              <textarea
+                id="descricao"
+                name="descricao"
+                rows="4"
+              >{documento.descricao ?? ""}</textarea>
+            </div>
+
+            <div class="campo">
+              <label for="secao">
+                Secção *
+              </label>
+
+              <select
+                id="secao"
+                name="secao"
+                required
+              >
+                <option
+                  value="instituicao"
+                  selected={documento.secao === "instituicao"}
+                >
+                  Instituição
+                </option>
+
+                <option
+                  value="organizacao"
+                  selected={documento.secao === "organizacao"}
+                >
+                  Organização escolar
+                </option>
+              </select>
+            </div>
+
+            <div class="campo">
+              <label for="ano_letivo">
+                Ano letivo
+              </label>
+
+              <input
+                id="ano_letivo"
+                name="ano_letivo"
+                type="text"
+                maxlength="20"
+                value={documento.ano_letivo ?? ""}
+                placeholder="Ex.: 2026/2027"
+              />
+            </div>
+
+            <div class="campo">
+              <label for="ordem">
+                Ordem de apresentação
+              </label>
+
+              <input
+                id="ordem"
+                name="ordem"
+                type="number"
+                min="0"
+                step="1"
+                value={documento.ordem}
+              />
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset disabled={!podeEditar}>
+          <legend>Origem do documento</legend>
+
+          {
+            documento.caminho_pdf ? (
+              <div class="ficheiro-atual">
+                <strong>PDF armazenado</strong>
+
+                <p>
+                  Este documento tem um PDF guardado
+                  no armazenamento privado da EPF.
+                </p>
+
+                <small>
+                  Podes substituir este ficheiro na secção
+                  «Substituir PDF», mais abaixo.
+                </small>
+              </div>
+            ) : (
+              <p class="ajuda">
+                Este documento não tem um PDF carregado
+                no armazenamento privado.
+                Podes adicionar um na secção «Substituir PDF».
+              </p>
+            )
+          }
+
+          <div class="campo">
+            <label for="url_externa">
+              Ligação externa
+            </label>
+
+            <input
+              id="url_externa"
+              name="url_externa"
+              type="url"
+              maxlength="2000"
+              value={documento.url_externa ?? ""}
+              placeholder="https://..."
+              readonly={Boolean(documento.caminho_pdf)}
+            />
+
+            {
+              documento.caminho_pdf && (
+                <small>
+                  Não é possível adicionar uma ligação externa
+                  enquanto existir um PDF associado.
+                </small>
+              )
+            }
+          </div>
+        </fieldset>
+
+        <fieldset disabled={!podeEditar}>
+          <legend>Visibilidade e consulta</legend>
+
+          <p class="ajuda">
+            Estas opções são independentes.
+            Nos documentos publicados, as alterações produzem
+            efeitos no website público depois de guardadas.
+            Nos rascunhos, só produzem efeitos após a publicação.
+          </p>
+
+          <label class="checkbox">
+            <input
+              type="checkbox"
+              name="mostrar_no_website"
+              value="true"
+              checked={documento.mostrar_no_website}
+            />
+
+            <span>
+              <strong>Mostrar no website</strong>
+
+              <small>
+                Apresentar o título na página pública
+                de Documentos Institucionais.
+              </small>
+            </span>
+          </label>
+
+          <label class="checkbox">
+            <input
+              type="checkbox"
+              name="permitir_abrir_pdf"
+              value="true"
+              checked={documento.permitir_abrir_pdf}
+            />
+
+            <span>
+              <strong>Permitir abrir PDF</strong>
+
+              <small>
+                Autorizar a abertura pública do documento
+                através da verificação de acesso no servidor.
+              </small>
+            </span>
+          </label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Informação de publicação</legend>
+
+          <div class="detalhes">
+            <div>
+              <span>Estado</span>
+              <strong>{estado}</strong>
+            </div>
+
+            <div>
+              <span>Visível no website</span>
+              <strong>
+                {
+                  documento.publicado &&
+                  documento.mostrar_no_website
+                    ? "Sim"
+                    : "Não"
+                }
+              </strong>
+            </div>
+
+            <div>
+              <span>Abertura pública autorizada</span>
+              <strong>
+                {
+                  documento.publicado &&
+                  documento.mostrar_no_website &&
+                  documento.permitir_abrir_pdf
+                    ? "Sim"
+                    : "Não"
+                }
+              </strong>
+            </div>
+
+            <div>
+              <span>Criado em</span>
+              <strong>
+                {
+                  new Date(
+                    documento.criado_em
+                  ).toLocaleString("pt-PT")
+                }
+              </strong>
+            </div>
+
+            <div>
+              <span>Última atualização</span>
+              <strong>
+                {
+                  new Date(
+                    documento.atualizado_em
+                  ).toLocaleString("pt-PT")
+                }
+              </strong>
+            </div>
+          </div>
+        </fieldset>
+
+        <div class="acoes">
+          <a
+            class="cancelar"
+            href="/admin/documentacao/"
+          >
+            Voltar
+          </a>
+
+          {
+            podeEditar && (
+              <button
+                type="submit"
+                class="guardar"
+              >
+                Guardar alterações
+              </button>
+            )
+          }
+        </div>
+      </form>
+
+      {
+        podeSubstituirPdf && (
+          <section class="substituicao">
+            <h2>
+              {documento.caminho_pdf
+                ? "Substituir PDF"
+                : "Adicionar PDF"}
+            </h2>
+
+            <p>
+              {documento.caminho_pdf
+                ? "Seleciona uma nova versão do documento em PDF. O ficheiro atual será substituído após a operação ser concluída com sucesso."
+                : "Seleciona um ficheiro PDF para associar a este documento."}
+            </p>
+
+            <p class="nota-substituicao">
+              Apenas ficheiros PDF, até 10 MB.
+              O documento mantém o mesmo estado de publicação.
+              Esta operação não guarda alterações aos outros campos.
+            </p>
+
+            {
+              documento.url_externa && (
+                <p class="nota-substituicao">
+                  Este documento tem uma ligação externa.
+                  Para associar um PDF, remove primeiro
+                  a ligação externa e guarda as alterações.
+                </p>
+              )
+            }
+
+            <form
+              id="formulario-substituicao"
+              action="/admin/documentacao/substituir-pdf"
+              method="POST"
+              enctype="multipart/form-data"
+            >
+              <input
+                type="hidden"
+                name="id"
+                value={documento.id}
+              />
+
+              <div class="campo">
+                <label for="novo_pdf">
+                  Novo ficheiro PDF *
+                </label>
+
+                <input
+                  id="novo_pdf"
+                  name="pdf"
+                  type="file"
+                  accept=".pdf,application/pdf"
+                  required
+                  disabled={Boolean(documento.url_externa)}
+                />
+
+                <small>
+                  O PDF será guardado no armazenamento
+                  privado da EPF.
+                </small>
+              </div>
+
+              <button
+                type="submit"
+                class="substituir"
+                disabled={Boolean(documento.url_externa)}
+              >
+                {documento.caminho_pdf
+                  ? "Substituir ficheiro PDF"
+                  : "Guardar ficheiro PDF"}
+              </button>
+            </form>
+          </section>
+        )
+      }
+
+      {
+        podePublicar && (
+          <section class="publicacao">
+            <h2>Publicação do documento</h2>
+
+            <p>
+              O documento está em rascunho.
+              Confirma que todas as informações estão corretas
+              antes de o publicar.
+            </p>
+
+            <p class="nota-publicacao">
+              Se alteraste algum campo acima,
+              guarda primeiro as alterações.
+              A publicação não guarda automaticamente
+              os campos do formulário.
+            </p>
+
+            <form
+              id="formulario-publicacao"
+              action="/admin/documentacao/publicar"
+              method="POST"
+            >
+              <input
+                type="hidden"
+                name="id"
+                value={documento.id}
+              />
+
+              <button
+                type="submit"
+                class="publicar"
+              >
+                Publicar documento
+              </button>
+            </form>
+          </section>
+        )
+      }
+
+      {
+        podeEliminar && (
+          <section class="eliminacao">
+            <h2>Eliminar documento</h2>
+
+            <p>
+              Esta operação elimina definitivamente o documento
+              da administração e da base de dados.
+            </p>
+
+            {
+              documento.publicado && (
+                <p>
+                  Como este documento está publicado,
+                  deixará também de aparecer no website público.
+                </p>
+              )
+            }
+
+            {
+              documento.caminho_pdf && (
+                <p>
+                  O ficheiro PDF associado será igualmente
+                  removido do armazenamento privado da EPF.
+                </p>
+              )
+            }
+
+            <p class="nota-eliminacao">
+              Atenção: esta operação é irreversível.
+              Confirma cuidadosamente o documento antes de continuar.
+            </p>
+
+            <form
+              id="formulario-eliminacao"
+              action="/admin/documentacao/eliminar"
+              method="POST"
+              data-titulo={documento.titulo}
+            >
+              <input
+                type="hidden"
+                name="id"
+                value={documento.id}
+              />
+
+              <button
+                type="submit"
+                class="eliminar"
+              >
+                Eliminar documento definitivamente
+              </button>
+            </form>
+          </section>
+        )
+      }
+    </main>
+
+    <script>
+      const formularioPublicacao =
+        document.querySelector<HTMLFormElement>(
+          "#formulario-publicacao"
+        );
+
+      formularioPublicacao?.addEventListener(
+        "submit",
+        (evento) => {
+          const confirmado = window.confirm(
+            "Tens a certeza de que pretendes publicar este documento? " +
+            "Depois de publicado, poderás continuar a editá-lo " +
+            "se tiveres as permissões necessárias."
+          );
+
+          if (!confirmado) {
+            evento.preventDefault();
+          }
+        }
+      );
+
+      const formularioSubstituicao =
+        document.querySelector<HTMLFormElement>(
+          "#formulario-substituicao"
+        );
+
+      formularioSubstituicao?.addEventListener(
+        "submit",
+        (evento) => {
+          const ficheiro =
+            formularioSubstituicao.querySelector<HTMLInputElement>(
+              'input[name="pdf"]'
+            )?.files?.[0];
+
+          if (!ficheiro) {
+            evento.preventDefault();
+            window.alert("Seleciona um ficheiro PDF.");
+            return;
+          }
+
+          const tamanhoMaximo = 10 * 1024 * 1024;
+
+          if (
+            ficheiro.size === 0 ||
+            ficheiro.size > tamanhoMaximo
+          ) {
+            evento.preventDefault();
+            window.alert(
+              "O ficheiro deve ter mais de 0 bytes e até 10 MB."
+            );
+            return;
+          }
+
+          if (!ficheiro.name.toLowerCase().endsWith(".pdf")) {
+            evento.preventDefault();
+            window.alert(
+              "Seleciona um ficheiro com extensão .pdf."
+            );
+            return;
+          }
+
+          const confirmado = window.confirm(
+            "Confirmas a substituição do PDF deste documento? " +
+            "A nova versão passará a ser utilizada no website " +
+            "sem alterar o estado de publicação."
+          );
+
+          if (!confirmado) {
+            evento.preventDefault();
+          }
+        }
+      );
+
+      const formularioEliminacao =
+        document.querySelector<HTMLFormElement>(
+          "#formulario-eliminacao"
+        );
+
+      formularioEliminacao?.addEventListener(
+        "submit",
+        (evento) => {
+          const titulo =
+            formularioEliminacao.dataset.titulo ??
+            "este documento";
+
+          const confirmado = window.confirm(
+            `Tens a certeza de que pretendes eliminar definitivamente "${titulo}"?\n\n` +
+            "Esta operação elimina o documento e o PDF associado, " +
+            "caso exista.\n\n" +
+            "Não será possível recuperar o documento depois da eliminação."
+          );
+
+          if (!confirmado) {
+            evento.preventDefault();
+          }
+        }
+      );
+    </script>
+  </body>
+</html>
+
+<style>
+  body {
+    margin: 0;
+    background: #f3f6fa;
+    color: #1e293b;
+    font-family: system-ui, sans-serif;
+  }
+
+  main {
+    max-width: 900px;
+    margin: 45px auto;
+    padding: 0 24px 60px;
+  }
+
+  a {
+    color: #16365c;
+    text-decoration: none;
+    font-weight: 600;
+  }
+
+  .cabecalho {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 20px;
+  }
+
+  h1 {
+    margin: 28px 0 8px;
+    color: #16365c;
+  }
+
+  .introducao {
+    margin-bottom: 28px;
+    color: #64748b;
+    line-height: 1.7;
+  }
+
+  .estado {
+    flex-shrink: 0;
+    margin-top: 32px;
+    padding: 7px 12px;
+    border-radius: 7px;
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  .estado.publicado {
+    background: #dcfce7;
+    color: #166534;
+  }
+
+  .estado.rascunho {
+    background: #fff1e1;
+    color: #a66c20;
+  }
+
+  .mensagem,
+  .aviso {
+    padding: 16px 18px;
+    margin-bottom: 22px;
+    border-radius: 10px;
+    font-size: 14px;
+    line-height: 1.7;
+  }
+
+  .mensagem.sucesso {
+    background: #ecfdf5;
+    border: 1px solid #a7f3d0;
+    color: #065f46;
+  }
+
+  .mensagem.erro {
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    color: #991b1b;
+  }
+
+  .aviso {
+    background: #f0f7ff;
+    border: 1px solid #d7e6f4;
+    color: #16365c;
+  }
+
+  .aviso p {
+    margin: 8px 0 0;
+  }
+
+  form {
+    display: grid;
+    gap: 22px;
+  }
+
+  fieldset {
+    min-width: 0;
+    padding: 24px;
+    margin: 0;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    background: white;
+  }
+
+  fieldset:disabled {
+    opacity: 0.75;
+  }
+
+  legend {
+    padding: 0 8px;
+    color: #16365c;
+    font-weight: 700;
+    font-size: 18px;
+  }
+
+  .grelha {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 18px;
+  }
+
+  .campo {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 18px;
+  }
+
+  .campo:last-child {
+    margin-bottom: 0;
+  }
+
+  .largo {
+    grid-column: 1 / -1;
+  }
+
+  label {
+    font-weight: 600;
+    font-size: 14px;
+  }
+
+  input,
+  select,
+  textarea {
+    box-sizing: border-box;
+    width: 100%;
+    padding: 12px;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    background: white;
+    color: #1e293b;
+    font: inherit;
+  }
+
+  input:focus,
+  select:focus,
+  textarea:focus {
+    outline: 2px solid #16365c;
+    outline-offset: 1px;
+  }
+
+  input:disabled,
+  select:disabled,
+  textarea:disabled {
+    cursor: not-allowed;
+    background: #f8fafc;
+  }
+
+  textarea {
+    resize: vertical;
+  }
+
+  small,
+  .ajuda {
+    color: #64748b;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+
+  .ajuda {
+    margin-top: 0;
+  }
+
+  .ficheiro-atual {
+    margin-bottom: 22px;
+    padding: 16px;
+    border: 1px solid #e2e8f0;
+    border-radius: 9px;
+    background: #f8fafc;
+  }
+
+  .ficheiro-atual strong {
+    color: #16365c;
+  }
+
+  .ficheiro-atual p {
+    margin: 8px 0;
+    font-size: 14px;
+  }
+
+  .checkbox {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    margin: 18px 0;
+    cursor: pointer;
+  }
+
+  .checkbox input {
+    width: auto;
+    flex-shrink: 0;
+    margin-top: 3px;
+    accent-color: #16365c;
+  }
+
+  .checkbox span {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .checkbox strong {
+    font-size: 14px;
+  }
+
+  .checkbox small {
+    font-weight: 400;
+  }
+
+  .detalhes {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px;
+  }
+
+  .detalhes > div {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .detalhes span {
+    color: #64748b;
+    font-size: 13px;
+  }
+
+  .detalhes strong {
+    font-size: 14px;
+  }
+
+  .acoes {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .cancelar {
+    padding: 12px 18px;
+  }
+
+  .guardar {
+    padding: 13px 22px;
+    background: #16365c;
+    border: none;
+    border-radius: 8px;
+    color: white;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .guardar:hover {
+    background: #234e7d;
+  }
+
+  .substituicao,
+  .publicacao,
+  .eliminacao {
+    margin-top: 30px;
+    padding: 24px;
+    border: 1px solid #d7e6f4;
+    border-radius: 12px;
+    background: #fff;
+  }
+
+  .substituicao h2,
+  .publicacao h2,
+  .eliminacao h2 {
+    margin: 0 0 12px;
+    color: #16365c;
+    font-size: 19px;
+  }
+
+  .substituicao p,
+  .publicacao p,
+  .eliminacao p {
+    margin: 0 0 14px;
+    color: #475569;
+    font-size: 14px;
+    line-height: 1.7;
+  }
+
+  .substituicao .nota-substituicao,
+  .publicacao .nota-publicacao {
+    color: #92400e;
+  }
+
+  .substituicao form,
+  .publicacao form,
+  .eliminacao form {
+    display: block;
+    margin-top: 20px;
+  }
+
+  .substituicao .campo {
+    margin-bottom: 18px;
+  }
+
+  .substituir,
+  .publicar,
+  .eliminar {
+    padding: 13px 22px;
+    border: none;
+    border-radius: 8px;
+    color: white;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .substituir {
+    background: #16365c;
+  }
+
+  .substituir:hover {
+    background: #234e7d;
+  }
+
+  .publicar {
+    background: #166534;
+  }
+
+  .publicar:hover {
+    background: #14532d;
+  }
+
+  .substituir:disabled,
+  .publicar:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+
+  .eliminacao {
+    border-color: #fecaca;
+    background: #fffafa;
+  }
+
+  .eliminacao h2 {
+    color: #991b1b;
+  }
+
+  .eliminacao .nota-eliminacao {
+    color: #991b1b;
+    font-weight: 700;
+  }
+
+  .eliminar {
+    background: #b91c1c;
+  }
+
+  .eliminar:hover {
+    background: #991b1b;
+  }
+
+  @media (max-width: 650px) {
+    main {
+      padding: 0 16px 40px;
+    }
+
+    .cabecalho {
+      flex-direction: column;
+      gap: 0;
+    }
+
+    .estado {
+      margin: 0 0 22px;
+    }
+
+    .grelha,
+    .detalhes {
+      grid-template-columns: 1fr;
+    }
+
+    .largo {
+      grid-column: auto;
+    }
+
+    fieldset,
+    .publicacao,
+    .substituicao,
+    .eliminacao {
+      padding: 18px;
+    }
+
+    .acoes {
+      flex-wrap: wrap;
+    }
+  }
+</style>
