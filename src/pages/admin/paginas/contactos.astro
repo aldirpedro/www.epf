@@ -1,0 +1,524 @@
+---
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import { criarSupabaseServer } from "../../../lib/supabase/server";
+import { site } from "../../../data/site";
+
+export const prerender = false;
+
+Astro.response.headers.set("Cache-Control", "private, no-store");
+
+const supabase = criarSupabaseServer(Astro);
+
+const {
+  data: { user },
+  error: erroAuth,
+} = await supabase.auth.getUser();
+
+if (erroAuth || !user) {
+  return Astro.redirect("/admin/login");
+}
+
+const { data: perfil, error: erroPerfil } = await supabase
+  .from("perfis")
+  .select("nome, perfil, ativo")
+  .eq("id", user.id)
+  .single();
+
+if (erroPerfil || !perfil?.ativo) {
+  return Astro.redirect("/admin");
+}
+
+const [
+  { data: podeVer },
+  { data: podeEditar },
+  { data: podePublicar },
+] = await Promise.all([
+  supabase.rpc("tem_permissao", {
+    p_recurso: "paginas",
+    p_acao: "ver",
+  }),
+  supabase.rpc("tem_permissao", {
+    p_recurso: "paginas",
+    p_acao: "editar",
+  }),
+  supabase.rpc("tem_permissao", {
+    p_recurso: "paginas",
+    p_acao: "publicar",
+  }),
+]);
+
+if (
+  podeVer !== true &&
+  podeEditar !== true &&
+  podePublicar !== true
+) {
+  return Astro.redirect("/admin");
+}
+
+const [
+  { data: pagina, error: erroPagina },
+  { data: rascunho, error: erroRascunho },
+] = await Promise.all([
+  supabase
+    .from("paginas_conteudo")
+    .select("conteudo")
+    .eq("slug", "contactos")
+    .maybeSingle(),
+
+  supabase
+    .from("paginas_rascunhos")
+    .select("conteudo")
+    .eq("slug", "contactos")
+    .maybeSingle(),
+]);
+
+const erroLeitura = !!erroPagina || !!erroRascunho;
+
+const conteudo: Record<string, unknown> =
+  rascunho?.conteudo &&
+  typeof rascunho.conteudo === "object" &&
+  !Array.isArray(rascunho.conteudo)
+    ? rascunho.conteudo
+    : pagina?.conteudo &&
+        typeof pagina.conteudo === "object" &&
+        !Array.isArray(pagina.conteudo)
+      ? pagina.conteudo
+      : {};
+
+const texto = (chave: string, original: string): string => {
+  const valor = conteudo[chave];
+
+  return typeof valor === "string" ? valor : original;
+};
+
+const tituloPagina = texto("titulo_pagina", "Contactos");
+
+const introducao = texto(
+  "introducao",
+  "Estamos disponíveis para esclarecer dúvidas sobre cursos, inscrições, parcerias e serviços da escola."
+);
+
+const tituloFormulario = texto(
+  "titulo_formulario",
+  "Envia-nos uma mensagem"
+);
+
+const entidade = texto("entidade", site.entidade);
+
+const morada = texto("morada", site.morada.join("\n"));
+
+const telefone = texto("telefone", site.telefone);
+
+const email = texto("email", site.email);
+
+const mapa = texto("mapa", site.mapa);
+
+const guardado =
+  Astro.url.searchParams.get("guardado") === "1";
+
+const publicado =
+  Astro.url.searchParams.get("publicado") === "1";
+
+const erro =
+  Astro.url.searchParams.get("erro") === "1";
+
+const existeRascunho = !!rascunho;
+
+const nomePerfil =
+  perfil.perfil === "super_admin"
+    ? "Super Administrador"
+    : perfil.perfil || "Administrador";
+---
+
+<AdminLayout
+  titulo="Editar Contactos"
+  nome={perfil.nome || "Administrador"}
+  perfil={nomePerfil}
+  ativo="paginas"
+>
+  <div class="editor">
+    <a href="/admin/">← Voltar ao painel</a>
+
+    <header>
+      <span class="etiqueta">GESTÃO DE PÁGINAS</span>
+
+      <h1>Editar página Contactos</h1>
+
+      <p>
+        Atualiza os dados de contacto da Escola Profissional do Fundão.
+        Guarda primeiro o rascunho e publica quando estiver pronto.
+      </p>
+    </header>
+
+    {
+      guardado && (
+        <div class="sucesso" role="status">
+          Rascunho guardado com sucesso.
+          A página pública ainda não foi alterada.
+        </div>
+      )
+    }
+
+    {
+      publicado && (
+        <div class="sucesso" role="status">
+          Página Contactos publicada com sucesso.
+        </div>
+      )
+    }
+
+    {
+      (erro || erroLeitura) && (
+        <div class="erro" role="alert">
+          Ocorreu um erro. Verifica os dados e tenta novamente.
+        </div>
+      )
+    }
+
+    {
+      existeRascunho && !erroLeitura && (
+        <div class="informacao">
+          Estás a editar o rascunho da página Contactos.
+        </div>
+      )
+    }
+
+    <form action="/admin/paginas/guardar-contactos" method="POST">
+      <section class="bloco">
+        <h2>Apresentação da página</h2>
+
+        <label for="titulo_pagina">Título da página</label>
+
+        <input
+          id="titulo_pagina"
+          name="titulo_pagina"
+          type="text"
+          maxlength="200"
+          value={tituloPagina}
+          required
+          readonly={podeEditar !== true}
+        />
+
+        <label for="introducao">Texto introdutório</label>
+
+        <textarea
+          id="introducao"
+          name="introducao"
+          rows="4"
+          required
+          readonly={podeEditar !== true}
+        >{introducao}</textarea>
+
+        <label for="titulo_formulario">
+          Título do formulário
+        </label>
+
+        <input
+          id="titulo_formulario"
+          name="titulo_formulario"
+          type="text"
+          maxlength="200"
+          value={tituloFormulario}
+          required
+          readonly={podeEditar !== true}
+        />
+      </section>
+
+      <section class="bloco">
+        <h2>Dados institucionais</h2>
+
+        <label for="entidade">
+          Nome da entidade
+        </label>
+
+        <input
+          id="entidade"
+          name="entidade"
+          type="text"
+          maxlength="250"
+          value={entidade}
+          required
+          readonly={podeEditar !== true}
+        />
+
+        <label for="morada">Morada</label>
+
+        <p class="ajuda">
+          Escreve cada linha da morada numa linha separada.
+        </p>
+
+        <textarea
+          id="morada"
+          name="morada"
+          rows="4"
+          required
+          readonly={podeEditar !== true}
+        >{morada}</textarea>
+
+        <label for="telefone">Telefone</label>
+
+        <input
+          id="telefone"
+          name="telefone"
+          type="tel"
+          maxlength="50"
+          value={telefone}
+          required
+          readonly={podeEditar !== true}
+        />
+
+        <label for="email">Email</label>
+
+        <input
+          id="email"
+          name="email"
+          type="email"
+          maxlength="254"
+          value={email}
+          required
+          readonly={podeEditar !== true}
+        />
+
+        <label for="mapa">
+          Ligação do Google Maps
+        </label>
+
+        <input
+          id="mapa"
+          name="mapa"
+          type="url"
+          maxlength="2000"
+          value={mapa}
+          required
+          readonly={podeEditar !== true}
+        />
+
+        <p class="ajuda">
+          Esta ligação é utilizada pelo botão
+          «Ver no Google Maps» da página pública.
+        </p>
+      </section>
+
+      <div class="acoes">
+        <a
+          href="/contactos/"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Ver página pública
+        </a>
+
+        {
+          podeEditar === true && !erroLeitura && (
+            <button type="submit" class="botao-guardar">
+              Guardar rascunho
+            </button>
+          )
+        }
+      </div>
+    </form>
+
+    {
+      podePublicar === true &&
+      existeRascunho &&
+      !erroLeitura && (
+        <form
+          action="/admin/paginas/publicar-contactos"
+          method="POST"
+          class="form-publicar"
+        >
+          <div>
+            <strong>Publicar no website</strong>
+
+            <p>
+              Publica a última versão guardada do rascunho.
+              As alterações ainda não guardadas não serão publicadas.
+            </p>
+          </div>
+
+          <button type="submit" class="botao-publicar">
+            Publicar alterações
+          </button>
+        </form>
+      )
+    }
+
+    {
+      podeEditar !== true && (
+        <p class="ajuda">
+          Não tens permissão para guardar alterações nesta página.
+        </p>
+      )
+    }
+  </div>
+</AdminLayout>
+
+<style>
+  .editor {
+    max-width: 920px;
+  }
+
+  .editor > a {
+    color: #267a4b;
+    font-weight: 600;
+  }
+
+  header {
+    margin: 28px 0;
+  }
+
+  .etiqueta {
+    color: #267a4b;
+    font-size: 12px;
+    font-weight: 800;
+  }
+
+  h1 {
+    margin: 10px 0;
+    font-size: 32px;
+    color: #152d43;
+  }
+
+  header p,
+  .ajuda {
+    color: #75869a;
+  }
+
+  form {
+    display: grid;
+    gap: 22px;
+  }
+
+  .bloco {
+    display: grid;
+    gap: 12px;
+    padding: 28px;
+    background: white;
+    border: 1px solid #e4eaf0;
+    border-radius: 14px;
+  }
+
+  h2 {
+    margin: 0 0 10px;
+    font-size: 20px;
+  }
+
+  label {
+    font-weight: 700;
+    font-size: 14px;
+  }
+
+  input,
+  textarea {
+    width: 100%;
+    padding: 13px;
+    border: 1px solid #dce5ed;
+    border-radius: 9px;
+    font: inherit;
+  }
+
+  textarea {
+    resize: vertical;
+  }
+
+  input[readonly],
+  textarea[readonly] {
+    background: #f4f7fa;
+  }
+
+  .ajuda {
+    margin: 0;
+    font-size: 13px;
+  }
+
+  .acoes {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 15px;
+  }
+
+  button {
+    padding: 14px 24px;
+    border: 0;
+    border-radius: 9px;
+    color: white;
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .botao-guardar {
+    background: #267a4b;
+  }
+
+  .botao-guardar:hover {
+    background: #1d613b;
+  }
+
+  .form-publicar {
+    margin-top: 22px;
+    padding: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    background: #fff;
+    border: 1px solid #dce5ed;
+    border-radius: 14px;
+  }
+
+  .form-publicar strong {
+    color: #152d43;
+  }
+
+  .form-publicar p {
+    margin: 7px 0 0;
+    color: #75869a;
+    font-size: 13px;
+  }
+
+  .botao-publicar {
+    flex-shrink: 0;
+    background: #152d43;
+  }
+
+  .botao-publicar:hover {
+    background: #254b69;
+  }
+
+  .sucesso,
+  .erro,
+  .informacao {
+    padding: 15px;
+    border-radius: 9px;
+    margin-bottom: 18px;
+  }
+
+  .sucesso {
+    background: #e8f5ec;
+    color: #17603b;
+  }
+
+  .erro {
+    background: #fff0f0;
+    color: #a52525;
+  }
+
+  .informacao {
+    background: #edf4fa;
+    color: #28506f;
+  }
+
+  @media (max-width: 600px) {
+    .bloco {
+      padding: 18px;
+    }
+
+    .acoes,
+    .form-publicar {
+      flex-direction: column;
+      align-items: stretch;
+    }
+  }
+</style>

@@ -49,6 +49,7 @@ const areas = [
   { chave: "cursos", nome: "Cursos" },
   { chave: "eventos", nome: "Eventos" },
   { chave: "documentacao", nome: "Documentação" },
+  { chave: "paginas", nome: "Páginas do Website" },
   { chave: "utilizadores", nome: "Utilizadores" },
 ];
 
@@ -157,6 +158,26 @@ const eSuperAdmin = utilizador.perfil === "super_admin";
 
                     {acoes.map((acao) => {
                       const chave = `${area.chave}:${acao.chave}`;
+
+                      const naoAplicavel =
+                        area.chave === "paginas" &&
+                        (
+                          acao.chave === "criar" ||
+                          acao.chave === "eliminar"
+                        );
+
+                      if (naoAplicavel) {
+                        return (
+                          <td>
+                            <span
+                              class="nao-aplicavel"
+                              aria-label="Não aplicável"
+                            >
+                              —
+                            </span>
+                          </td>
+                        );
+                      }
 
                       return (
                         <td>
@@ -366,6 +387,12 @@ const eSuperAdmin = utilizador.perfil === "super_admin";
     height: 19px;
     accent-color: #267a4b;
     cursor: pointer;
+  }
+
+  .nao-aplicavel {
+    color: #b1bac4;
+    font-size: 17px;
+    font-weight: 500;
   }
 
   .rodape {

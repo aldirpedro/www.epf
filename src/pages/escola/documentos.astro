@@ -1,8 +1,107 @@
 ---
+import { createClient } from '@supabase/supabase-js';
+
 import Pagina from '../../layouts/Pagina.astro';
 import ListaDocumentos from '../../components/ListaDocumentos.astro';
 import Icone from '../../components/Icone.astro';
-import { institucionais, organizacaoEscolar } from '../../data/documentos';
+
+import {
+  institucionais,
+  organizacaoEscolar,
+  type Documento,
+} from '../../data/documentos';
+
+export const prerender = false;
+
+const supabasePublico = createClient(
+  import.meta.env.PUBLIC_SUPABASE_URL,
+  import.meta.env.PUBLIC_SUPABASE_PUBLISHABLE_KEY,
+  {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
+  }
+);
+
+type DocumentoPublicado = {
+  id: string;
+  titulo: string;
+  descricao: string | null;
+  secao: string;
+  ano_letivo: string | null;
+  ordem: number;
+  url_externa: string | null;
+  caminho_pdf: string | null;
+  permitir_abrir_pdf: boolean;
+};
+
+const { data: documentosPublicados, error: erroDocumentos } =
+  await supabasePublico
+    .from('documentacao')
+    .select(
+      'id, titulo, descricao, secao, ano_letivo, ordem, url_externa, caminho_pdf, permitir_abrir_pdf'
+    )
+    .eq('publicado', true)
+    .eq('mostrar_no_website', true)
+    .order('ordem', { ascending: true })
+    .order('titulo', { ascending: true });
+
+if (erroDocumentos) {
+  console.error(
+    'Erro ao carregar documentos institucionais:',
+    erroDocumentos.message
+  );
+}
+
+const documentosDinamicos: DocumentoPublicado[] =
+  erroDocumentos
+    ? []
+    : (documentosPublicados ?? []) as DocumentoPublicado[];
+
+const converterDocumento = (
+  documento: DocumentoPublicado
+): Documento => {
+  const urlExterna =
+    typeof documento.url_externa === 'string' &&
+    /^https?:\/\//i.test(documento.url_externa)
+      ? documento.url_externa
+      : '';
+
+  const temPdfPrivado =
+    typeof documento.caminho_pdf === 'string' &&
+    documento.caminho_pdf.length > 0;
+
+  const urlDocumento = temPdfPrivado
+    ? `/api/documentacao/${documento.id}`
+    : urlExterna;
+
+  const podeAbrir =
+    documento.permitir_abrir_pdf &&
+    Boolean(urlDocumento);
+
+  return {
+    titulo: documento.titulo,
+    nota: documento.descricao ?? undefined,
+    url: podeAbrir ? urlDocumento : '',
+    mostrarNoWebsite: true,
+    permitirAbrirPdf: podeAbrir,
+  };
+};
+
+const documentosInstituicao = documentosDinamicos
+  .filter((documento) => documento.secao === 'instituicao')
+  .map(converterDocumento);
+
+const documentosOrganizacao = documentosDinamicos
+  .filter((documento) => documento.secao === 'organizacao')
+  .map(converterDocumento);
+
+const todosInstitucionais: Documento[] = [
+  ...institucionais,
+  ...documentosInstituicao,
+];
 ---
 
 <Pagina
@@ -14,20 +113,53 @@ import { institucionais, organizacaoEscolar } from '../../data/documentos';
     <div class="contentor duas-colunas">
       <div>
         <h2>Instituição</h2>
-        <ListaDocumentos documentos={institucionais} />
+
+        <ListaDocumentos documentos={todosInstitucionais} />
       </div>
+
       <div id="organizacao">
         <h2>Organização escolar</h2>
+
         <div class="painel">
-          <span class="etiqueta">{organizacaoEscolar.anoLetivo}</span>
+          <span class="etiqueta">
+            {organizacaoEscolar.anoLetivo}
+          </span>
+
           <ul>
-            {organizacaoEscolar.documentos.map((d) => <li>{d}</li>)}
+            {
+              organizacaoEscolar.documentos.map((documento) => (
+                <li>{documento}</li>
+              ))
+            }
           </ul>
-          <a href={organizacaoEscolar.url} class="ligacao-seta" rel="noopener">
-            Consultar documentos e anos anteriores <Icone nome="externo" tamanho={16} />
+
+          <a
+            href={organizacaoEscolar.url}
+            class="ligacao-seta"
+            rel="noopener"
+          >
+            Consultar documentos e anos anteriores
+            <Icone nome="externo" tamanho={16} />
           </a>
         </div>
-        <p class="nota">Procuras os documentos da qualidade? Estão na página <a href="/qualidade/">Qualidade · EQAVET</a>.</p>
+
+        {
+          documentosOrganizacao.length > 0 && (
+            <div class="documentos-organizacao">
+              <h3>Outros documentos de organização escolar</h3>
+
+              <ListaDocumentos
+                documentos={documentosOrganizacao}
+              />
+            </div>
+          )
+        }
+
+        <p class="nota">
+          Procuras os documentos da qualidade?
+          Estão na página
+          <a href="/qualidade/">Qualidade · EQAVET</a>.
+        </p>
       </div>
     </div>
   </section>
@@ -38,9 +170,19 @@ import { institucionais, organizacaoEscolar } from '../../data/documentos';
     margin: 1rem 0 1.25rem;
     padding-left: 1.1rem;
   }
+
   .painel li {
     margin-bottom: 0.3rem;
   }
+
+  .documentos-organizacao {
+    margin-top: 1.75rem;
+  }
+
+  .documentos-organizacao h3 {
+    margin-bottom: 1rem;
+  }
+
   .nota {
     margin-top: 1.25rem;
     font-size: 0.92rem;

@@ -1,0 +1,1144 @@
+---
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import { criarSupabaseServer } from "../../../lib/supabase/server";
+
+export const prerender = false;
+
+Astro.response.headers.set("Cache-Control", "private, no-store");
+
+const supabase = criarSupabaseServer(Astro);
+
+const {
+  data: { user },
+  error: erroAutenticacao,
+} = await supabase.auth.getUser();
+
+if (erroAutenticacao || !user) {
+  return Astro.redirect("/admin/login");
+}
+
+const { data: perfil, error: erroPerfil } = await supabase
+  .from("perfis")
+  .select("nome, perfil, ativo")
+  .eq("id", user.id)
+  .single();
+
+if (erroPerfil || !perfil?.ativo) {
+  return Astro.redirect("/admin/login?erro=acesso");
+}
+
+const acoes = [
+  "ver",
+  "criar",
+  "editar",
+  "eliminar",
+  "publicar",
+] as const;
+
+type Acao = (typeof acoes)[number];
+
+const resultados = await Promise.all(
+  acoes.map((acao) =>
+    supabase.rpc("tem_permissao", {
+      p_recurso: "documentacao",
+      p_acao: acao,
+    })
+  )
+);
+
+const permissoes: Record<Acao, boolean> = {
+  ver: false,
+  criar: false,
+  editar: false,
+  eliminar: false,
+  publicar: false,
+};
+
+acoes.forEach((acao, indice) => {
+  const resultado = resultados[indice];
+
+  permissoes[acao] =
+    resultado.error === null &&
+    resultado.data === true;
+});
+
+const podeAceder = Object.values(permissoes).some(Boolean);
+
+if (!podeAceder) {
+  return Astro.redirect("/admin/?erro=permissao");
+}
+
+const nome = perfil.nome || "Utilizador";
+
+const nomesCargos: Record<string, string> = {
+  super_admin: "Super Administrador",
+  coordenador: "Coordenador",
+  audiovisuais: "Audiovisuais",
+  secretaria: "Secretaria",
+};
+
+const nomePerfil = nomesCargos[perfil.perfil] || perfil.perfil;
+
+type Documento = {
+  id: string;
+  titulo: string;
+  descricao: string | null;
+  secao: string;
+  ano_letivo: string | null;
+  ordem: number;
+  url_externa: string | null;
+  caminho_pdf: string | null;
+  mostrar_no_website: boolean;
+  permitir_abrir_pdf: boolean;
+  publicado: boolean;
+  atualizado_em: string;
+};
+
+const { data: dadosDocumentos, error: erroDocumentos } =
+  await supabase
+    .from("documentacao")
+    .select(
+      "id, titulo, descricao, secao, ano_letivo, ordem, url_externa, caminho_pdf, mostrar_no_website, permitir_abrir_pdf, publicado, atualizado_em"
+    )
+    .order("secao", { ascending: true })
+    .order("ordem", { ascending: true })
+    .order("titulo", { ascending: true });
+
+const documentos = (dadosDocumentos ?? []) as Documento[];
+
+const totalDocumentos = documentos.length;
+
+const totalPublicados = documentos.filter(
+  (documento) => documento.publicado
+).length;
+
+const totalRascunhos = documentos.filter(
+  (documento) => !documento.publicado
+).length;
+
+const totalRestritos = documentos.filter(
+  (documento) => !documento.permitir_abrir_pdf
+).length;
+
+// Mensagens apresentadas depois de criar ou eliminar documentos.
+const documentoCriado =
+  Astro.url.searchParams.get("criado") === "1";
+
+const documentoEliminado =
+  Astro.url.searchParams.get("eliminado") === "1";
+
+const mensagemSucesso = documentoEliminado
+  ? "Documento eliminado com sucesso."
+  : documentoCriado
+    ? "Documento criado com sucesso. Está guardado como rascunho."
+    : null;
+
+function nomeSecao(secao: string): string {
+  const nomes: Record<string, string> = {
+    instituicao: "Instituição",
+    organizacao: "Organização escolar",
+  };
+
+  return nomes[secao] || secao;
+}
+
+function formatarData(valor: string): string {
+  const data = new Date(valor);
+
+  if (Number.isNaN(data.getTime())) {
+    return "—";
+  }
+
+  return new Intl.DateTimeFormat("pt-PT", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(data);
+}
+---
+
+<AdminLayout
+  titulo="Documentação"
+  nome={nome}
+  perfil={nomePerfil}
+  ativo="documentacao"
+>
+  <div class="documentacao">
+    <header class="cabecalho">
+      <div>
+        <span class="sobretitulo">
+          GESTÃO DE CONTEÚDOS
+        </span>
+
+        <h1>Documentação</h1>
+
+        <p>
+          Gere os documentos institucionais da Escola
+          Profissional do Fundão, a sua publicação e
+          as permissões de consulta.
+        </p>
+      </div>
+
+      {
+        permissoes.criar && (
+          <a class="botao-principal" href="/admin/documentacao/novo">
+            <span aria-hidden="true">＋</span>
+            Novo documento
+          </a>
+        )
+      }
+    </header>
+
+    {
+      mensagemSucesso && (
+        <div
+          class="mensagem mensagem-sucesso"
+          role="status"
+          aria-live="polite"
+        >
+          {mensagemSucesso}
+        </div>
+      )
+    }
+
+    <section
+      class="estatisticas"
+      aria-label="Resumo da documentação"
+    >
+      <article class="cartao-estatistica">
+        <span class="indicador">Total de documentos</span>
+        <strong class="numero">{totalDocumentos}</strong>
+        <p>Registos na documentação</p>
+      </article>
+
+      <article class="cartao-estatistica">
+        <span class="indicador">Publicados</span>
+        <strong class="numero">{totalPublicados}</strong>
+        <p>Documentos publicados</p>
+      </article>
+
+      <article class="cartao-estatistica">
+        <span class="indicador">Rascunhos</span>
+        <strong class="numero">{totalRascunhos}</strong>
+        <p>Aguardam publicação</p>
+      </article>
+
+      <article class="cartao-estatistica">
+        <span class="indicador">Consulta restrita</span>
+        <strong class="numero">{totalRestritos}</strong>
+        <p>Sem abertura pública de PDF</p>
+      </article>
+    </section>
+
+    <section class="painel">
+      <div class="painel-cabecalho">
+        <div>
+          <h2>Documentos institucionais</h2>
+
+          <p>
+            Documentos das secções Instituição e
+            Organização escolar.
+          </p>
+        </div>
+
+        <a
+          class="ligacao-website"
+          href="/escola/documentos/"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Ver página pública ↗
+        </a>
+      </div>
+
+      {
+        erroDocumentos ? (
+          <div class="mensagem mensagem-erro" role="alert">
+            Não foi possível carregar a documentação.
+            Verifica as permissões e a ligação ao Supabase.
+          </div>
+        ) : documentos.length === 0 ? (
+          <div class="estado-vazio">
+            <div class="icone-vazio" aria-hidden="true">▤</div>
+
+            <h3>Ainda não existem documentos registados</h3>
+
+            <p>
+              Os documentos atualmente apresentados no website
+              continuam disponíveis através das ligações existentes.
+              Os novos documentos serão geridos aqui.
+            </p>
+
+            {
+              permissoes.criar && (
+                <a
+                  class="botao-principal"
+                  href="/admin/documentacao/novo"
+                >
+                  ＋ Adicionar primeiro documento
+                </a>
+              )
+            }
+          </div>
+        ) : (
+          <div
+            class="tabela-envolvente"
+            role="region"
+            aria-label="Tabela de documentos institucionais"
+            tabindex="0"
+          >
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Documento</th>
+                  <th scope="col">Secção</th>
+                  <th scope="col">Publicação</th>
+                  <th scope="col">Website</th>
+                  <th scope="col">PDF</th>
+                  <th scope="col">Atualização</th>
+                  <th scope="col">Ações</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {
+                  documentos.map((documento) => (
+                    <tr>
+                      <td>
+                        <div class="documento-identificacao">
+                          <span
+                            class="documento-icone"
+                            aria-hidden="true"
+                          >
+                            ▤
+                          </span>
+
+                          <div>
+                            <strong>{documento.titulo}</strong>
+
+                            {documento.ano_letivo && (
+                              <small>
+                                Ano letivo: {documento.ano_letivo}
+                              </small>
+                            )}
+
+                            {documento.descricao && (
+                              <small>{documento.descricao}</small>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+
+                      <td>
+                        <span class="texto-secundario">
+                          {nomeSecao(documento.secao)}
+                        </span>
+                      </td>
+
+                      <td>
+                        {documento.publicado ? (
+                          <span class="estado estado-publicado">
+                            Publicado
+                          </span>
+                        ) : (
+                          <span class="estado estado-rascunho">
+                            Rascunho
+                          </span>
+                        )}
+                      </td>
+
+                      <td>
+                        {documento.mostrar_no_website ? (
+                          <span class="estado estado-sim">
+                            Visível
+                          </span>
+                        ) : (
+                          <span class="estado estado-nao">
+                            Oculto
+                          </span>
+                        )}
+                      </td>
+
+                      <td>
+                        {documento.permitir_abrir_pdf ? (
+                          <span class="estado estado-sim">
+                            Permitido
+                          </span>
+                        ) : (
+                          <span class="estado estado-restrito">
+                            Restrito
+                          </span>
+                        )}
+                      </td>
+
+                      <td>
+                        <span class="texto-secundario">
+                          {formatarData(documento.atualizado_em)}
+                        </span>
+                      </td>
+
+                      <td>
+                        {permissoes.editar ? (
+                          <a
+                            class="ligacao-acao"
+                            href={`/admin/documentacao/${documento.id}`}
+                            aria-label={`Editar ${documento.titulo}`}
+                          >
+                            Editar
+                          </a>
+                        ) : (
+                          <span class="texto-secundario">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))
+                }
+              </tbody>
+            </table>
+          </div>
+        )
+      }
+    </section>
+
+    <section class="painel painel-seguranca">
+      <div class="seguranca-icone" aria-hidden="true">♧</div>
+
+      <div>
+        <h2>Segurança dos documentos</h2>
+
+        <p>
+          Mostrar um documento no website e permitir abrir
+          o respetivo PDF são opções independentes.
+          Os PDFs restritos são armazenados num bucket
+          privado do Supabase.
+        </p>
+
+        <p>
+          O acesso público aos PDFs é verificado no servidor.
+          Apenas os documentos publicados, visíveis no website
+          e com abertura de PDF permitida podem disponibilizar
+          o ficheiro através da rota pública.
+        </p>
+      </div>
+    </section>
+  </div>
+</AdminLayout>
+
+<style>
+  /* ==================================================
+     1. BASE VISUAL DA DOCUMENTAÇÃO
+     ================================================== */
+
+  .documentacao {
+    --doc-verde: var(--admin-verde, #267a4b);
+    --doc-verde-escuro: var(
+      --admin-verde-escuro,
+      #20663f
+    );
+    --doc-superficie: var(
+      --admin-superficie,
+      #ffffff
+    );
+    --doc-texto: var(--admin-texto, #203247);
+    --doc-secundario: var(
+      --admin-texto-secundario,
+      #75869a
+    );
+    --doc-borda: var(--admin-borda, #e4eaf0);
+    --doc-raio: 0.875rem;
+    --doc-espaco: clamp(1rem, 2vw, 1.5rem);
+
+    width: 100%;
+    max-width: 84.375rem;
+    min-width: 0;
+    margin-inline: auto;
+  }
+
+  /* ==================================================
+     2. CABEÇALHO DA PÁGINA
+     ================================================== */
+
+  .cabecalho {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1.5rem;
+
+    margin-bottom: clamp(1.5rem, 3vw, 2rem);
+  }
+
+  .cabecalho > div {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .sobretitulo {
+    display: inline-block;
+
+    color: var(--doc-verde);
+    font-size: 0.6875rem;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    line-height: 1.5;
+  }
+
+  h1 {
+    margin: 0.5rem 0 0.625rem;
+
+    color: #152d43;
+
+    font-size: clamp(1.75rem, 3vw, 2.25rem);
+    font-weight: 750;
+    line-height: 1.2;
+    letter-spacing: -0.035em;
+  }
+
+  .cabecalho p {
+    max-width: 42rem;
+    margin: 0;
+
+    color: var(--doc-secundario);
+
+    font-size: 0.875rem;
+    line-height: 1.7;
+  }
+
+  /* ==================================================
+     3. BOTÕES E LIGAÇÕES
+     ================================================== */
+
+  .botao-principal {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+
+    flex: 0 0 auto;
+
+    min-height: 2.75rem;
+    padding: 0.75rem 1rem;
+
+    border: 1px solid var(--doc-verde);
+    border-radius: 0.625rem;
+
+    background: var(--doc-verde);
+    color: #ffffff;
+
+    font-size: 0.8125rem;
+    font-weight: 700;
+    line-height: 1.3;
+    text-align: center;
+    text-decoration: none;
+
+    transition:
+      background-color 160ms ease,
+      border-color 160ms ease;
+  }
+
+  .botao-principal:hover {
+    background: var(--doc-verde-escuro);
+    border-color: var(--doc-verde-escuro);
+  }
+
+  .botao-principal:focus-visible,
+  .ligacao-website:focus-visible,
+  .ligacao-acao:focus-visible {
+    outline: 3px solid #a7d9bd;
+    outline-offset: 3px;
+  }
+
+  .ligacao-website {
+    display: inline-flex;
+    align-items: center;
+
+    flex: 0 0 auto;
+
+    min-height: 2.5rem;
+
+    color: var(--doc-verde);
+
+    font-size: 0.8125rem;
+    font-weight: 700;
+    line-height: 1.4;
+    text-decoration: none;
+  }
+
+  .ligacao-website:hover,
+  .ligacao-acao:hover {
+    text-decoration: underline;
+    text-underline-offset: 0.2rem;
+  }
+
+  /* ==================================================
+     4. CARTÕES DE ESTATÍSTICAS
+     ================================================== */
+
+  .estatisticas {
+    display: grid;
+
+    grid-template-columns: repeat(
+      auto-fit,
+      minmax(min(100%, 12.5rem), 1fr)
+    );
+
+    gap: var(--doc-espaco);
+    margin-bottom: var(--doc-espaco);
+  }
+
+  .cartao-estatistica,
+  .painel {
+    min-width: 0;
+
+    background: var(--doc-superficie);
+    border: 1px solid var(--doc-borda);
+    border-radius: var(--doc-raio);
+
+    box-shadow: 0 0.25rem 1.25rem rgb(23 50 76 / 0.025);
+  }
+
+  .cartao-estatistica {
+    display: flex;
+    flex-direction: column;
+
+    min-height: 9.5rem;
+
+    padding: clamp(1.125rem, 2vw, 1.5rem);
+  }
+
+  .indicador {
+    color: #687c90;
+
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 1.4;
+  }
+
+  .numero {
+    display: block;
+
+    margin-top: 1rem;
+
+    color: #172f46;
+
+    font-size: clamp(1.875rem, 3vw, 2.25rem);
+    font-weight: 800;
+    line-height: 1.15;
+    letter-spacing: -0.045em;
+  }
+
+  .cartao-estatistica p {
+    margin: 0.375rem 0 0;
+
+    color: var(--doc-secundario);
+
+    font-size: 0.8125rem;
+    line-height: 1.5;
+  }
+
+  /* ==================================================
+     5. PAINÉIS E CABEÇALHOS INTERNOS
+     ================================================== */
+
+  .painel {
+    padding: clamp(1.125rem, 2.2vw, 1.625rem);
+    margin-bottom: var(--doc-espaco);
+  }
+
+  .painel-cabecalho {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1.25rem;
+
+    margin-bottom: 1.5rem;
+  }
+
+  .painel-cabecalho > div {
+    min-width: 0;
+  }
+
+  .painel h2 {
+    margin: 0 0 0.5rem;
+
+    color: #172f46;
+
+    font-size: clamp(1rem, 1.5vw, 1.125rem);
+    font-weight: 750;
+    line-height: 1.4;
+    letter-spacing: -0.015em;
+  }
+
+  .painel p {
+    margin: 0;
+
+    color: var(--doc-secundario);
+
+    font-size: 0.8125rem;
+    line-height: 1.75;
+  }
+
+  /* ==================================================
+     6. MENSAGENS DE SUCESSO E ERRO
+     ================================================== */
+
+  .mensagem {
+    padding: 1rem 1.125rem;
+
+    border: 1px solid transparent;
+    border-radius: 0.625rem;
+
+    font-size: 0.8125rem;
+    line-height: 1.6;
+  }
+
+  .mensagem-erro {
+    background: #fff1f0;
+    color: #a43832;
+    border-color: #f5d5d2;
+  }
+
+  .mensagem-sucesso {
+    margin-bottom: var(--doc-espaco);
+
+    background: #e6f5ec;
+    color: #166534;
+    border-color: #b7dfc5;
+
+    font-weight: 600;
+  }
+
+  /* ==================================================
+     7. ESTADO SEM DOCUMENTOS
+     ================================================== */
+
+  .estado-vazio {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.875rem;
+
+    padding:
+      clamp(2rem, 5vw, 3.5rem)
+      1rem;
+
+    text-align: center;
+  }
+
+  .icone-vazio {
+    display: grid;
+    place-items: center;
+
+    width: 4rem;
+    height: 4rem;
+
+    border-radius: 1rem;
+
+    background: #e6f5ec;
+    color: var(--doc-verde);
+
+    font-size: 2rem;
+  }
+
+  .estado-vazio h3 {
+    margin: 0;
+
+    color: #172f46;
+
+    font-size: 1.125rem;
+    line-height: 1.4;
+  }
+
+  .estado-vazio p {
+    max-width: 30rem;
+    margin: 0 0 0.5rem;
+  }
+
+  /* ==================================================
+     8. TABELA DE DOCUMENTOS
+     ================================================== */
+
+  /*
+    A tabela tem sete colunas.
+    Mantemos uma largura mínima para preservar
+    a leitura e permitimos deslocamento horizontal
+    apenas dentro da área da tabela.
+  */
+
+  .tabela-envolvente {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+
+    overflow-x: auto;
+    overflow-y: hidden;
+
+    border-radius: 0.625rem;
+
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    scrollbar-color: #c5d0da transparent;
+  }
+
+  .tabela-envolvente:focus-visible {
+    outline: 3px solid #a7d9bd;
+    outline-offset: 2px;
+  }
+
+  table {
+    width: 100%;
+    min-width: 55rem;
+
+    border-collapse: collapse;
+    text-align: left;
+  }
+
+  th {
+    padding: 0.875rem 0.75rem;
+
+    border-bottom: 1px solid var(--doc-borda);
+
+    background: #f8fafc;
+    color: #687c90;
+
+    font-size: 0.6875rem;
+    font-weight: 750;
+    line-height: 1.4;
+    letter-spacing: 0.015em;
+
+    white-space: nowrap;
+  }
+
+  th:first-child {
+    border-top-left-radius: 0.5rem;
+  }
+
+  th:last-child {
+    border-top-right-radius: 0.5rem;
+  }
+
+  td {
+    padding: 1rem 0.75rem;
+
+    border-bottom: 1px solid #eef1f5;
+
+    color: var(--doc-texto);
+
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    vertical-align: middle;
+  }
+
+  tbody tr:last-child td {
+    border-bottom: none;
+  }
+
+  tbody tr:hover {
+    background: #fafcfd;
+  }
+
+  /* Identificação do documento na primeira coluna. */
+
+  .documento-identificacao {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+
+    min-width: 13rem;
+    max-width: 23rem;
+  }
+
+  .documento-identificacao > div {
+    min-width: 0;
+  }
+
+  .documento-icone {
+    display: grid;
+    place-items: center;
+
+    width: 2.25rem;
+    height: 2.25rem;
+
+    flex: 0 0 auto;
+
+    border-radius: 0.625rem;
+
+    background: #e9f0fb;
+    color: #3b6ba7;
+
+    font-size: 1.25rem;
+    line-height: 1;
+  }
+
+  .documento-identificacao strong {
+    display: block;
+
+    color: var(--doc-texto);
+
+    font-size: 0.8125rem;
+    font-weight: 750;
+    line-height: 1.5;
+
+    overflow-wrap: anywhere;
+  }
+
+  .documento-identificacao small {
+    display: block;
+
+    margin-top: 0.25rem;
+
+    color: #718397;
+
+    font-size: 0.6875rem;
+    line-height: 1.5;
+
+    overflow-wrap: anywhere;
+  }
+
+  .texto-secundario {
+    color: #687c90;
+
+    font-size: 0.75rem;
+    line-height: 1.5;
+  }
+
+  /* ==================================================
+     9. INDICADORES DE ESTADO
+     ================================================== */
+
+  .estado {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+
+    min-height: 1.75rem;
+
+    padding: 0.375rem 0.625rem;
+
+    border-radius: 0.5rem;
+
+    font-size: 0.6875rem;
+    font-weight: 750;
+    line-height: 1.3;
+
+    white-space: nowrap;
+  }
+
+  .estado-publicado,
+  .estado-sim {
+    background: #e6f5ec;
+    color: #166534;
+  }
+
+  .estado-rascunho {
+    background: #fff1e1;
+    color: #925d17;
+  }
+
+  .estado-nao {
+    background: #eef1f5;
+    color: #52667b;
+  }
+
+  .estado-restrito {
+    background: #fff1f0;
+    color: #a43832;
+  }
+
+  .ligacao-acao {
+    display: inline-flex;
+    align-items: center;
+
+    min-height: 2.5rem;
+    padding: 0.25rem 0.375rem;
+
+    color: var(--doc-verde);
+
+    font-size: 0.8125rem;
+    font-weight: 750;
+    line-height: 1.4;
+    text-decoration: none;
+  }
+
+  /* ==================================================
+     10. PAINEL DE SEGURANÇA
+     ================================================== */
+
+  .painel-seguranca {
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+
+    background: #f9fbfc;
+  }
+
+  .painel-seguranca > div:last-child {
+    min-width: 0;
+  }
+
+  .seguranca-icone {
+    display: grid;
+    place-items: center;
+
+    width: 2.625rem;
+    height: 2.625rem;
+
+    flex: 0 0 auto;
+
+    border-radius: 0.6875rem;
+
+    background: #e6f5ec;
+    color: var(--doc-verde);
+
+    font-size: 1.4375rem;
+    line-height: 1;
+  }
+
+  .painel-seguranca p + p {
+    margin-top: 0.75rem;
+  }
+
+  /* ==================================================
+     11. TABLET E ECRÃS INTERMÉDIOS
+     ================================================== */
+
+  @media (max-width: 1200px) {
+    .estatisticas {
+      grid-template-columns: repeat(
+        2,
+        minmax(0, 1fr)
+      );
+    }
+  }
+
+  @media (max-width: 900px) {
+    .painel {
+      padding: 1.25rem;
+    }
+
+    .painel-cabecalho {
+      gap: 1rem;
+    }
+
+    .estatisticas {
+      gap: 1rem;
+    }
+  }
+
+  /* ==================================================
+     12. TELEMÓVEL
+     ================================================== */
+
+  @media (max-width: 600px) {
+    .cabecalho,
+    .painel-cabecalho {
+      flex-direction: column;
+      align-items: stretch;
+
+      gap: 1rem;
+    }
+
+    .cabecalho {
+      margin-bottom: 1.5rem;
+    }
+
+    h1 {
+      font-size: clamp(1.625rem, 7vw, 2rem);
+    }
+
+    .cabecalho p {
+      font-size: 0.8125rem;
+    }
+
+    .cabecalho .botao-principal,
+    .ligacao-website {
+      align-self: flex-start;
+    }
+
+    .estatisticas {
+      grid-template-columns: minmax(0, 1fr);
+
+      gap: 0.75rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .cartao-estatistica {
+      min-height: 0;
+      padding: 1.125rem;
+    }
+
+    .numero {
+      margin-top: 0.75rem;
+      font-size: 2rem;
+    }
+
+    .painel {
+      padding: 1.125rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .painel-cabecalho {
+      margin-bottom: 1.125rem;
+    }
+
+    .tabela-envolvente {
+      margin-inline: -0.25rem;
+      width: calc(100% + 0.5rem);
+      max-width: calc(100% + 0.5rem);
+    }
+
+    th {
+      padding: 0.75rem 0.625rem;
+    }
+
+    td {
+      padding: 0.875rem 0.625rem;
+    }
+
+    .painel-seguranca {
+      gap: 0.75rem;
+    }
+
+    .seguranca-icone {
+      width: 2.25rem;
+      height: 2.25rem;
+
+      font-size: 1.25rem;
+    }
+
+    .estado-vazio {
+      padding: 2rem 0.5rem;
+    }
+  }
+
+  /* ==================================================
+     13. ECRÃS MUITO ESTREITOS
+     ================================================== */
+
+  @media (max-width: 380px) {
+    .painel {
+      padding: 0.875rem;
+    }
+
+    .cartao-estatistica {
+      padding: 1rem;
+    }
+
+    .painel-seguranca {
+      flex-direction: column;
+    }
+
+    .mensagem {
+      padding: 0.875rem;
+    }
+  }
+
+  /* ==================================================
+     14. ACESSIBILIDADE
+     ================================================== */
+
+  @media (prefers-reduced-motion: reduce) {
+    .botao-principal {
+      transition: none;
+    }
+  }
+</style>

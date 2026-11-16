@@ -1,0 +1,1736 @@
+---
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import { criarSupabaseServer } from "../../../lib/supabase/server";
+import { site } from "../../../data/site";
+
+export const prerender = false;
+
+Astro.response.headers.set("Cache-Control", "private, no-store");
+
+const supabase = criarSupabaseServer(Astro);
+
+const {
+  data: { user },
+  error: erroAuth,
+} = await supabase.auth.getUser();
+
+if (erroAuth || !user) {
+  return Astro.redirect("/admin/login");
+}
+
+const { data: perfil, error: erroPerfil } = await supabase
+  .from("perfis")
+  .select("nome, perfil, ativo")
+  .eq("id", user.id)
+  .single();
+
+if (erroPerfil || !perfil?.ativo) {
+  return Astro.redirect("/admin");
+}
+
+const [
+  { data: podeVer },
+  { data: podeEditar },
+  { data: podePublicar },
+] = await Promise.all([
+  supabase.rpc("tem_permissao", {
+    p_recurso: "paginas",
+    p_acao: "ver",
+  }),
+  supabase.rpc("tem_permissao", {
+    p_recurso: "paginas",
+    p_acao: "editar",
+  }),
+  supabase.rpc("tem_permissao", {
+    p_recurso: "paginas",
+    p_acao: "publicar",
+  }),
+]);
+
+if (
+  podeVer !== true &&
+  podeEditar !== true &&
+  podePublicar !== true
+) {
+  return Astro.redirect("/admin");
+}
+
+const [
+  { data: pagina, error: erroPagina },
+  { data: rascunho, error: erroRascunho },
+] = await Promise.all([
+  supabase
+    .from("paginas_conteudo")
+    .select("conteudo")
+    .eq("slug", "inicio")
+    .maybeSingle(),
+
+  supabase
+    .from("paginas_rascunhos")
+    .select("conteudo")
+    .eq("slug", "inicio")
+    .maybeSingle(),
+]);
+
+const erroLeitura = !!erroPagina || !!erroRascunho;
+
+const conteudo: Record<string, unknown> =
+  rascunho?.conteudo &&
+  typeof rascunho.conteudo === "object" &&
+  !Array.isArray(rascunho.conteudo)
+    ? rascunho.conteudo
+    : pagina?.conteudo &&
+        typeof pagina.conteudo === "object" &&
+        !Array.isArray(pagina.conteudo)
+      ? pagina.conteudo
+      : {};
+
+const texto = (chave: string, original: string): string => {
+  const valor = conteudo[chave];
+
+  return typeof valor === "string" ? valor : original;
+};
+
+type Campo = {
+  nome: string;
+  rotulo: string;
+  valor: string;
+  tipo: "texto" | "area";
+  maximo: number;
+};
+
+const campo = (
+  nome: string,
+  rotulo: string,
+  original: string,
+  tipo: "texto" | "area" = "texto",
+  maximo = 200
+): Campo => ({
+  nome,
+  rotulo,
+  valor: texto(nome, original),
+  tipo,
+  maximo,
+});
+
+const grupos: {
+  titulo: string;
+  descricao: string;
+  campos: Campo[];
+}[] = [
+  {
+    titulo: "Apresentação principal",
+    descricao:
+      "Textos apresentados sobre as fotografias do carrossel.",
+    campos: [
+      campo(
+        "heroi_sobretitulo",
+        "Frase superior",
+        site.assinatura
+      ),
+      campo(
+        "heroi_titulo",
+        "Título principal",
+        "Formação profissional na Cova da Beira"
+      ),
+      campo(
+        "heroi_destaque",
+        "Texto destacado a verde",
+        `desde ${site.fundacao}.`
+      ),
+      campo(
+        "heroi_descricao",
+        "Descrição",
+        "Cursos com dupla certificação, ensino gratuito, estágios em empresas e mobilidade europeia.",
+        "area",
+        1500
+      ),
+      campo(
+        "botao_inscricoes",
+        "Texto do botão de inscrições",
+        "Inscreve-te"
+      ),
+      campo(
+        "botao_oferta",
+        "Texto do botão de oferta formativa",
+        "Ver oferta formativa"
+      ),
+    ],
+  },
+  {
+    titulo: "Indicadores",
+    descricao:
+      "Os valores são automáticos. Apenas os rótulos institucionais podem ser editados.",
+    campos: [
+      campo(
+        "destaque_1_rotulo",
+        "Rótulo do ano de fundação",
+        "Ano de fundação"
+      ),
+      campo(
+        "destaque_2_rotulo",
+        "Rótulo do número de cursos",
+        "Cursos profissionais"
+      ),
+    ],
+  },
+  {
+    titulo: "Acessos rápidos",
+    descricao:
+      "Altera os nomes e as descrições. Os destinos e os ícones mantêm-se.",
+    campos: [
+      campo("atalho_1_nome", "Atalho 1 — nome", "Cursos Profissionais"),
+      campo("atalho_1_nota", "Atalho 1 — descrição", "Nível 4 · 12.º ano"),
+      campo("atalho_2_nome", "Atalho 2 — nome", "Cursos CEF"),
+      campo("atalho_2_nota", "Atalho 2 — descrição", "Nível 2 · 9.º ano"),
+      campo("atalho_3_nome", "Atalho 3 — nome", "Erasmus+"),
+      campo("atalho_3_nota", "Atalho 3 — descrição", "Estágios na Europa"),
+      campo("atalho_4_nome", "Atalho 4 — nome", "Qualidade EQAVET"),
+      campo("atalho_4_nota", "Atalho 4 — descrição", "Selo e relatórios"),
+      campo("atalho_5_nome", "Atalho 5 — nome", "Documentos"),
+      campo("atalho_5_nota", "Atalho 5 — descrição", "Regulamentos e calendário"),
+      campo("atalho_6_nome", "Atalho 6 — nome", "Recrutamento"),
+      campo("atalho_6_nota", "Atalho 6 — descrição", "Emprego e estágios"),
+    ],
+  },
+  {
+    titulo: "Oferta Formativa",
+    descricao:
+      "Textos da secção. Os cursos continuam a ser geridos no módulo próprio.",
+    campos: [
+      campo("oferta_sobretitulo", "Frase superior", "Oferta formativa"),
+      campo("oferta_titulo", "Título", "Cursos Profissionais"),
+      campo(
+        "oferta_descricao",
+        "Descrição",
+        "Três anos de formação com equivalência ao 12.º ano e qualificação profissional de nível 4.",
+        "area",
+        1500
+      ),
+      campo("cef_titulo", "Título dos CEF", "Cursos de Educação e Formação"),
+      campo(
+        "cef_descricao",
+        "Descrição dos CEF",
+        "Para jovens com mais de 15 anos que querem concluir o 9.º ano com uma certificação profissional.",
+        "area",
+        1500
+      ),
+    ],
+  },
+  {
+    titulo: "Porquê a EPF",
+    descricao:
+      "Apresentação da escola e dos três pilares.",
+    campos: [
+      campo("porque_sobretitulo", "Frase superior", "Porquê a EPF"),
+      campo("porque_titulo", "Título", site.lema),
+      campo("pilar_1_titulo", "Pilar 1 — título", "Aprender uma profissão"),
+      campo(
+        "pilar_1_texto",
+        "Pilar 1 — descrição",
+        "Além das disciplinas científicas e socioculturais, os cursos têm uma forte componente técnica, com estágios e práticas em contexto de trabalho. Quem sai da EPF sai com uma profissão.",
+        "area",
+        2000
+      ),
+      campo("pilar_2_titulo", "Pilar 2 — título", "Prosseguir estudos"),
+      campo(
+        "pilar_2_texto",
+        "Pilar 2 — descrição",
+        "A frequência de uma escola profissional é compatível com a entrada no ensino superior. Os nossos alunos já estão rotinados com métodos de trabalho que encontrarão mais tarde.",
+        "area",
+        2000
+      ),
+      campo("pilar_3_titulo", "Pilar 3 — título", "Ligação ao território"),
+      campo(
+        "pilar_3_texto",
+        "Pilar 3 — descrição",
+        "Mantemos protocolos de colaboração com o poder local, a sociedade civil, associações e empresas, e uma rede europeia de parceiros para estágios internacionais.",
+        "area",
+        2000
+      ),
+    ],
+  },
+  {
+    titulo: "Notícias",
+    descricao:
+      "Apenas os textos da secção. As notícias não são alteradas.",
+    campos: [
+      campo("noticias_sobretitulo", "Frase superior", "Notícias"),
+      campo("noticias_titulo", "Título", "O que se passa na escola"),
+    ],
+  },
+  {
+    titulo: "Eventos",
+    descricao:
+      "Apenas os textos da secção. Os eventos não são alterados.",
+    campos: [
+      campo("eventos_sobretitulo", "Frase superior", "Agenda da escola"),
+      campo("eventos_titulo", "Título", "Próximos eventos"),
+      campo(
+        "eventos_descricao",
+        "Descrição",
+        "Acompanha as atividades, iniciativas e acontecimentos da Escola Profissional do Fundão.",
+        "area",
+        1500
+      ),
+    ],
+  },
+];
+
+type ImagemHeroi = {
+  url: string;
+  alt: string;
+};
+
+const imagensIniciais: ImagemHeroi[] = Array.isArray(
+  conteudo.heroi_imagens
+)
+  ? conteudo.heroi_imagens
+      .map((item: unknown): ImagemHeroi | null => {
+        if (typeof item === "string") {
+          return { url: item, alt: "" };
+        }
+
+        if (
+          !item ||
+          typeof item !== "object" ||
+          Array.isArray(item)
+        ) {
+          return null;
+        }
+
+        const imagem = item as Record<string, unknown>;
+
+        return typeof imagem.url === "string"
+          ? {
+              url: imagem.url,
+              alt:
+                typeof imagem.alt === "string"
+                  ? imagem.alt
+                  : "",
+            }
+          : null;
+      })
+      .filter(
+        (imagem): imagem is ImagemHeroi =>
+          imagem !== null
+      )
+  : [];
+
+const imagemAlunos = texto("imagem_alunos", "");
+
+const guardado =
+  Astro.url.searchParams.get("guardado") === "1";
+
+const publicado =
+  Astro.url.searchParams.get("publicado") === "1";
+
+const erro =
+  Astro.url.searchParams.get("erro") === "1";
+
+const existeRascunho = !!rascunho;
+
+const nomePerfil =
+  perfil.perfil === "super_admin"
+    ? "Super Administrador"
+    : perfil.perfil || "Administrador";
+---
+
+<AdminLayout
+  titulo="Editar Página Inicial"
+  nome={perfil.nome || "Administrador"}
+  perfil={nomePerfil}
+  ativo="paginas"
+>
+  <div class="editor">
+    <a href="/admin/">← Voltar ao painel</a>
+
+    <header>
+      <span class="etiqueta">GESTÃO DE PÁGINAS</span>
+
+      <h1>Editar Página Inicial</h1>
+
+      <p>
+        Gere os textos e as fotografias da Página Inicial
+        da Escola Profissional do Fundão.
+      </p>
+    </header>
+
+    {
+      guardado && (
+        <div class="sucesso" role="status">
+          Rascunho guardado com sucesso.
+          A página pública ainda não foi alterada.
+        </div>
+      )
+    }
+
+    {
+      publicado && (
+        <div class="sucesso" role="status">
+          Página Inicial publicada com sucesso.
+        </div>
+      )
+    }
+
+    {
+      (erro || erroLeitura) && (
+        <div class="erro" role="alert">
+          Ocorreu um erro ao carregar ou processar os conteúdos.
+        </div>
+      )
+    }
+
+    {
+      existeRascunho && !erroLeitura && (
+        <div class="informacao">
+          Estás a editar o rascunho da Página Inicial.
+        </div>
+      )
+    }
+
+    <div
+      id="aviso-imagens"
+      class="informacao"
+      role="status"
+      aria-live="polite"
+      hidden
+    ></div>
+
+    <form
+      id="form-inicio"
+      action="/admin/paginas/guardar-inicio"
+      method="POST"
+    >
+      <section class="bloco">
+        <h2>Fotografias do carrossel</h2>
+
+        <p class="ajuda">
+          As fotografias aparecem pela ordem indicada.
+          Podes carregar três ou mais fotografias,
+          reorganizá-las ou removê-las do carrossel.
+        </p>
+
+        <div
+          id="lista-imagens"
+          class="lista-imagens"
+          aria-label="Fotografias do carrossel"
+        ></div>
+
+        <input
+          type="hidden"
+          name="heroi_imagens"
+          id="heroi_imagens"
+          value={JSON.stringify(imagensIniciais)}
+        />
+
+        {
+          podeEditar === true && (
+            <div class="acoes-imagem">
+              <label
+                for="ficheiro-carrossel"
+                class="botao-carregar"
+              >
+                Carregar fotografias
+              </label>
+
+              <input
+                id="ficheiro-carrossel"
+                class="ficheiro"
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/avif"
+                multiple
+              />
+
+              <button
+                type="button"
+                id="adicionar-imagem"
+                class="botao-secundario"
+              >
+                + Adicionar por endereço
+              </button>
+            </div>
+          )
+        }
+
+        <p class="ajuda">
+          Formatos: JPEG, PNG, WebP ou AVIF.
+          Máximo de 10 MB por fotografia.
+        </p>
+
+        <p class="ajuda">
+          Se a lista estiver vazia, o website utiliza
+          a fotografia original do edifício.
+        </p>
+      </section>
+
+      <section class="bloco">
+        <h2>Fotografia dos alunos</h2>
+
+        <p class="ajuda">
+          Fotografia apresentada na secção «Porquê a EPF».
+          Se não definires uma substituição, mantém-se
+          a fotografia original.
+        </p>
+
+        <label for="imagem_alunos">
+          Endereço da fotografia
+        </label>
+
+        <input
+          id="imagem_alunos"
+          name="imagem_alunos"
+          type="url"
+          maxlength="2000"
+          placeholder="https://..."
+          value={imagemAlunos}
+          readonly={podeEditar !== true}
+        />
+
+        <img
+          id="previsualizacao-alunos"
+          class="previsualizacao"
+          src={imagemAlunos || undefined}
+          alt="Pré-visualização da fotografia dos alunos"
+          hidden={!imagemAlunos}
+        />
+
+        {
+          podeEditar === true && (
+            <div class="acoes-imagem">
+              <label
+                for="ficheiro-alunos"
+                class="botao-carregar"
+              >
+                Carregar fotografia dos alunos
+              </label>
+
+              <input
+                id="ficheiro-alunos"
+                class="ficheiro"
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/avif"
+              />
+
+              <button
+                type="button"
+                id="remover-imagem-alunos"
+                class="botao-lista"
+              >
+                Repor fotografia original
+              </button>
+            </div>
+          )
+        }
+
+        <p class="ajuda">
+          A nova fotografia só será apresentada no website
+          depois de guardares o rascunho e publicares
+          as alterações. A ligação à página pública
+          será concluída no próximo passo.
+        </p>
+      </section>
+
+      {
+        grupos.map((grupo) => (
+          <section class="bloco">
+            <h2>{grupo.titulo}</h2>
+
+            <p class="ajuda">{grupo.descricao}</p>
+
+            {grupo.campos.map((campo) => (
+              <div class="campo">
+                <label for={campo.nome}>
+                  {campo.rotulo}
+                </label>
+
+                {campo.tipo === "area" ? (
+                  <textarea
+                    id={campo.nome}
+                    name={campo.nome}
+                    rows="4"
+                    maxlength={campo.maximo}
+                    required
+                    readonly={podeEditar !== true}
+                  >{campo.valor}</textarea>
+                ) : (
+                  <input
+                    id={campo.nome}
+                    name={campo.nome}
+                    type="text"
+                    maxlength={campo.maximo}
+                    value={campo.valor}
+                    required
+                    readonly={podeEditar !== true}
+                  />
+                )}
+              </div>
+            ))}
+          </section>
+        ))
+      }
+
+      <div class="acoes">
+        <a
+          href="/"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Ver Página Inicial
+        </a>
+
+        {
+          podeEditar === true && (
+            <button
+              type="submit"
+              id="guardar-rascunho"
+              class="botao-guardar"
+              disabled={erroLeitura}
+            >
+              Guardar rascunho
+            </button>
+          )
+        }
+      </div>
+    </form>
+
+    {
+      podePublicar === true && (
+        <form
+          action="/admin/paginas/publicar-inicio"
+          method="POST"
+          class="form-publicar"
+          id="form-publicar"
+        >
+          <div>
+            <strong>Publicar no website</strong>
+
+            <p>
+              Publica a última versão guardada do rascunho.
+              Guarda primeiro as alterações que fizeste
+              neste editor.
+            </p>
+          </div>
+
+          <button
+            type="submit"
+            id="publicar-alteracoes"
+            class="botao-publicar"
+            disabled={erroLeitura || !existeRascunho}
+          >
+            Publicar alterações
+          </button>
+        </form>
+      )
+    }
+
+    {
+      podeEditar !== true && (
+        <p class="ajuda">
+          Não tens permissão para guardar alterações nesta página.
+        </p>
+      )
+    }
+  </div>
+</AdminLayout>
+
+<script define:vars={{ imagensIniciais, podeEditar }}>
+  const lista = document.getElementById("lista-imagens");
+  const campoImagens = document.getElementById("heroi_imagens");
+  const botaoAdicionar = document.getElementById("adicionar-imagem");
+
+  const ficheiroCarrossel = document.getElementById(
+    "ficheiro-carrossel"
+  );
+
+  const ficheiroAlunos = document.getElementById(
+    "ficheiro-alunos"
+  );
+
+  const campoAlunos = document.getElementById("imagem_alunos");
+
+  const previsualizacaoAlunos = document.getElementById(
+    "previsualizacao-alunos"
+  );
+
+  const botaoRemoverAlunos = document.getElementById(
+    "remover-imagem-alunos"
+  );
+
+  const aviso = document.getElementById("aviso-imagens");
+  const formulario = document.getElementById("form-inicio");
+  const formularioPublicar = document.getElementById("form-publicar");
+
+  const botaoGuardar = document.getElementById("guardar-rascunho");
+  const botaoPublicar = document.getElementById("publicar-alteracoes");
+
+  const podeAlterar = podeEditar === true;
+
+  let imagens = Array.isArray(imagensIniciais)
+    ? imagensIniciais.map((imagem) => ({
+        url: imagem.url || "",
+        alt: imagem.alt || "",
+      }))
+    : [];
+
+  let carregamentosAtivos = 0;
+  let alteracoesPendentes = false;
+
+  function mostrarAviso(mensagem, erro = false) {
+    if (!aviso) return;
+
+    aviso.hidden = false;
+    aviso.textContent = mensagem;
+    aviso.className = erro ? "erro" : "informacao";
+  }
+
+  function sincronizar() {
+    if (campoImagens) {
+      campoImagens.value = JSON.stringify(imagens);
+    }
+  }
+
+  function marcarAlteracao() {
+    alteracoesPendentes = true;
+
+    if (botaoPublicar) {
+      botaoPublicar.disabled = true;
+      botaoPublicar.title =
+        "Guarda o rascunho antes de publicar as alterações.";
+    }
+  }
+
+  function atualizarEstadoCarregamento() {
+    const ocupado = carregamentosAtivos > 0;
+
+    if (botaoGuardar) {
+      botaoGuardar.disabled = ocupado;
+    }
+
+    if (botaoPublicar) {
+      botaoPublicar.disabled =
+        ocupado || alteracoesPendentes || botaoPublicar.disabled;
+    }
+
+    if (ficheiroCarrossel) {
+      ficheiroCarrossel.disabled = ocupado;
+    }
+
+    if (ficheiroAlunos) {
+      ficheiroAlunos.disabled = ocupado;
+    }
+  }
+
+  function enderecoValido(valor) {
+    if (!valor) return false;
+
+    try {
+      const url = new URL(valor, window.location.origin);
+
+      return (
+        url.protocol === "https:" ||
+        (
+          valor.startsWith("/") &&
+          !valor.startsWith("//") &&
+          url.origin === window.location.origin
+        )
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  function criarBotao(rotulo, acao, desativado = false) {
+    const botao = document.createElement("button");
+
+    botao.type = "button";
+    botao.textContent = rotulo;
+    botao.className = "botao-lista";
+    botao.disabled = desativado;
+
+    botao.addEventListener("click", acao);
+
+    return botao;
+  }
+
+  function renderizar() {
+    if (!lista) return;
+
+    lista.replaceChildren();
+
+    imagens.forEach((imagem, indice) => {
+      const item = document.createElement("div");
+      item.className = "item-imagem";
+
+      const titulo = document.createElement("strong");
+      titulo.textContent = `Fotografia ${indice + 1}`;
+
+      const previsualizacao = document.createElement("img");
+      previsualizacao.className = "previsualizacao";
+      previsualizacao.alt = imagem.alt || "Fotografia do carrossel";
+
+      if (enderecoValido(imagem.url)) {
+        previsualizacao.src = imagem.url;
+      }
+
+      const etiquetaUrl = document.createElement("label");
+      etiquetaUrl.textContent = "Endereço da fotografia";
+
+      const inputUrl = document.createElement("input");
+      inputUrl.type = "url";
+      inputUrl.placeholder = "https://...";
+      inputUrl.value = imagem.url;
+      inputUrl.maxLength = 2000;
+      inputUrl.readOnly = !podeAlterar;
+
+      inputUrl.addEventListener("input", () => {
+        imagens[indice].url = inputUrl.value;
+        sincronizar();
+        marcarAlteracao();
+      });
+
+      inputUrl.addEventListener("change", renderizar);
+
+      const etiquetaAlt = document.createElement("label");
+      etiquetaAlt.textContent = "Descrição da fotografia";
+
+      const inputAlt = document.createElement("input");
+      inputAlt.type = "text";
+      inputAlt.placeholder = "Ex.: Entrada principal da EPF";
+      inputAlt.value = imagem.alt;
+      inputAlt.maxLength = 300;
+      inputAlt.readOnly = !podeAlterar;
+
+      inputAlt.addEventListener("input", () => {
+        imagens[indice].alt = inputAlt.value;
+        sincronizar();
+        marcarAlteracao();
+      });
+
+      const acoes = document.createElement("div");
+      acoes.className = "acoes-imagem";
+
+      if (podeAlterar) {
+        acoes.append(
+          criarBotao(
+            "↑ Subir",
+            () => {
+              if (indice === 0) return;
+
+              [imagens[indice - 1], imagens[indice]] = [
+                imagens[indice],
+                imagens[indice - 1],
+              ];
+
+              sincronizar();
+              marcarAlteracao();
+              renderizar();
+            },
+            indice === 0
+          ),
+
+          criarBotao(
+            "↓ Descer",
+            () => {
+              if (indice === imagens.length - 1) return;
+
+              [imagens[indice], imagens[indice + 1]] = [
+                imagens[indice + 1],
+                imagens[indice],
+              ];
+
+              sincronizar();
+              marcarAlteracao();
+              renderizar();
+            },
+            indice === imagens.length - 1
+          ),
+
+          criarBotao("Remover", () => {
+            imagens.splice(indice, 1);
+            sincronizar();
+            marcarAlteracao();
+            renderizar();
+          })
+        );
+      }
+
+      item.append(
+        titulo,
+        previsualizacao,
+        etiquetaUrl,
+        inputUrl,
+        etiquetaAlt,
+        inputAlt,
+        acoes
+      );
+
+      lista.append(item);
+    });
+
+    if (imagens.length === 0) {
+      const mensagem = document.createElement("p");
+      mensagem.className = "ajuda";
+      mensagem.textContent =
+        "Ainda não existem fotografias adicionadas ao carrossel.";
+
+      lista.append(mensagem);
+    }
+
+    sincronizar();
+  }
+
+  async function carregarImagem(ficheiro) {
+    if (!podeAlterar) {
+      throw new Error("Sem permissão para carregar imagens.");
+    }
+
+    const tipos = [
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+      "image/avif",
+    ];
+
+    if (!tipos.includes(ficheiro.type)) {
+      throw new Error(
+        "Formato inválido. Utiliza JPEG, PNG, WebP ou AVIF."
+      );
+    }
+
+    if (ficheiro.size > 10 * 1024 * 1024) {
+      throw new Error(
+        "Cada fotografia pode ter no máximo 10 MB."
+      );
+    }
+
+    const dados = new FormData();
+    dados.append("imagem", ficheiro);
+
+    carregamentosAtivos++;
+    atualizarEstadoCarregamento();
+
+    try {
+      const resposta = await fetch(
+        "/admin/paginas/carregar-imagem-inicio",
+        {
+          method: "POST",
+          body: dados,
+          credentials: "same-origin",
+        }
+      );
+
+      const resultado = await resposta.json();
+
+      if (
+        !resposta.ok ||
+        resultado.sucesso !== true ||
+        typeof resultado.url !== "string"
+      ) {
+        throw new Error(
+          resultado.mensagem ||
+          "Não foi possível carregar a fotografia."
+        );
+      }
+
+      return resultado.url;
+    } finally {
+      carregamentosAtivos--;
+      atualizarEstadoCarregamento();
+    }
+  }
+
+  botaoAdicionar?.addEventListener("click", () => {
+    if (!podeAlterar) return;
+
+    imagens.push({
+      url: "",
+      alt: "",
+    });
+
+    sincronizar();
+    marcarAlteracao();
+    renderizar();
+  });
+
+  ficheiroCarrossel?.addEventListener("change", async () => {
+    const ficheiros = Array.from(ficheiroCarrossel.files || []);
+
+    if (!ficheiros.length) return;
+
+    mostrarAviso(
+      `A carregar ${ficheiros.length} fotografia(s)...`
+    );
+
+    let sucessos = 0;
+    const erros = [];
+
+    for (const ficheiro of ficheiros) {
+      try {
+        const url = await carregarImagem(ficheiro);
+
+        imagens.push({
+          url,
+          alt: ficheiro.name.replace(/\.[^.]+$/, ""),
+        });
+
+        sucessos++;
+        marcarAlteracao();
+        sincronizar();
+        renderizar();
+      } catch (erro) {
+        erros.push(
+          `${ficheiro.name}: ${
+            erro instanceof Error
+              ? erro.message
+              : "Erro desconhecido"
+          }`
+        );
+      }
+    }
+
+    ficheiroCarrossel.value = "";
+
+    if (erros.length) {
+      mostrarAviso(
+        `${sucessos} fotografia(s) carregada(s). ${erros.join(" | ")}`,
+        true
+      );
+    } else {
+      mostrarAviso(
+        `${sucessos} fotografia(s) carregada(s). Guarda o rascunho para conservar a lista.`
+      );
+    }
+  });
+
+  function atualizarPrevisualizacaoAlunos() {
+    if (!previsualizacaoAlunos || !campoAlunos) return;
+
+    const url = campoAlunos.value.trim();
+
+    if (url && enderecoValido(url)) {
+      previsualizacaoAlunos.src = url;
+      previsualizacaoAlunos.hidden = false;
+    } else {
+      previsualizacaoAlunos.removeAttribute("src");
+      previsualizacaoAlunos.hidden = true;
+    }
+  }
+
+  ficheiroAlunos?.addEventListener("change", async () => {
+    const ficheiro = ficheiroAlunos.files?.[0];
+
+    if (!ficheiro) return;
+
+    mostrarAviso("A carregar fotografia dos alunos...");
+
+    try {
+      const url = await carregarImagem(ficheiro);
+
+      if (campoAlunos) {
+        campoAlunos.value = url;
+      }
+
+      atualizarPrevisualizacaoAlunos();
+      marcarAlteracao();
+
+      mostrarAviso(
+        "Fotografia dos alunos carregada. Guarda o rascunho para conservar a alteração."
+      );
+    } catch (erro) {
+      mostrarAviso(
+        erro instanceof Error
+          ? erro.message
+          : "Não foi possível carregar a fotografia.",
+        true
+      );
+    }
+
+    ficheiroAlunos.value = "";
+  });
+
+  campoAlunos?.addEventListener("input", () => {
+    atualizarPrevisualizacaoAlunos();
+    marcarAlteracao();
+  });
+
+  botaoRemoverAlunos?.addEventListener("click", () => {
+    if (!podeAlterar || !campoAlunos) return;
+
+    campoAlunos.value = "";
+    atualizarPrevisualizacaoAlunos();
+    marcarAlteracao();
+  });
+
+  formulario?.addEventListener("input", (evento) => {
+    const alvo = evento.target;
+
+    if (
+      alvo instanceof HTMLElement &&
+      alvo.id !== "heroi_imagens"
+    ) {
+      marcarAlteracao();
+    }
+  });
+
+  formulario?.addEventListener("submit", (evento) => {
+    if (carregamentosAtivos > 0) {
+      evento.preventDefault();
+      mostrarAviso(
+        "Aguarda até terminar o carregamento das fotografias.",
+        true
+      );
+      return;
+    }
+
+    const invalidas = imagens.some(
+      (imagem) => !enderecoValido(imagem.url)
+    );
+
+    if (invalidas) {
+      evento.preventDefault();
+
+      mostrarAviso(
+        "Todas as fotografias do carrossel devem ter um endereço válido. Remove as entradas vazias antes de guardar.",
+        true
+      );
+
+      return;
+    }
+
+    sincronizar();
+  });
+
+  formularioPublicar?.addEventListener("submit", (evento) => {
+    if (carregamentosAtivos > 0 || alteracoesPendentes) {
+      evento.preventDefault();
+
+      mostrarAviso(
+        "Guarda primeiro as alterações do rascunho.",
+        true
+      );
+
+      return;
+    }
+
+    const confirmado = window.confirm(
+      "Queres publicar a última versão guardada da Página Inicial?"
+    );
+
+    if (!confirmado) {
+      evento.preventDefault();
+    }
+  });
+
+  atualizarPrevisualizacaoAlunos();
+  renderizar();
+</script>
+
+<style>
+  /* ==================================================
+     1. BASE E CABEÇALHO
+     ================================================== */
+
+  .editor {
+    width: 100%;
+    max-width: 68rem;
+    min-width: 0;
+    margin-inline: auto;
+  }
+
+  .editor > a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 2.5rem;
+    color: #267a4b;
+    font-size: 0.875rem;
+    font-weight: 700;
+    text-decoration: none;
+  }
+
+  .editor > a:hover {
+    text-decoration: underline;
+    text-underline-offset: 0.2rem;
+  }
+
+  header {
+    margin: clamp(1.25rem, 3vw, 2rem) 0;
+  }
+
+  .etiqueta {
+    color: #267a4b;
+    font-size: 0.6875rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+  }
+
+  h1 {
+    margin: 0.625rem 0;
+    color: #152d43;
+    font-size: clamp(1.75rem, 3vw, 2.25rem);
+    line-height: 1.2;
+  }
+
+  header p {
+    max-width: 48rem;
+    margin: 0;
+    color: #75869a;
+    font-size: 0.875rem;
+    line-height: 1.7;
+  }
+
+  /* ==================================================
+     2. FORMULÁRIO E SECÇÕES
+     ================================================== */
+
+  #form-inicio {
+    display: grid;
+    gap: clamp(1rem, 2vw, 1.5rem);
+    min-width: 0;
+  }
+
+  .bloco {
+    display: grid;
+    gap: 1rem;
+    min-width: 0;
+    padding: clamp(1rem, 2.5vw, 1.75rem);
+    background: #ffffff;
+    border: 1px solid #e4eaf0;
+    border-radius: 0.875rem;
+  }
+
+  h2 {
+    margin: 0;
+    color: #152d43;
+    font-size: clamp(1.0625rem, 2vw, 1.25rem);
+    line-height: 1.4;
+  }
+
+  .ajuda {
+    margin: 0;
+    color: #75869a;
+    font-size: 0.8125rem;
+    line-height: 1.65;
+  }
+
+  .campo {
+    display: grid;
+    gap: 0.5rem;
+    min-width: 0;
+  }
+
+  label {
+    color: #203247;
+    font-size: 0.8125rem;
+    font-weight: 700;
+    line-height: 1.5;
+  }
+
+  input:not([type="hidden"]):not([type="file"]),
+  textarea {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    padding: 0.8125rem;
+    border: 1px solid #dce5ed;
+    border-radius: 0.5625rem;
+    background: #ffffff;
+    color: #203247;
+    font: inherit;
+    font-size: 0.875rem;
+    line-height: 1.5;
+  }
+
+  textarea {
+    min-height: 7rem;
+    resize: vertical;
+  }
+
+  input[readonly],
+  textarea[readonly] {
+    background: #f4f7fa !important;
+  }
+
+  input:focus-visible,
+  textarea:focus-visible {
+    outline: 3px solid #a7d9bd;
+    outline-offset: 2px;
+    border-color: #267a4b;
+  }
+
+  /* ==================================================
+     3. LISTA DE FOTOGRAFIAS
+     ================================================== */
+
+  .lista-imagens {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1.25rem;
+    min-width: 0;
+    width: 100%;
+  }
+
+  /*
+    IMPORTANTE:
+    Os cartões são criados através de document.createElement().
+    O CSS normal do Astro não alcança esses elementos.
+    Por isso usamos :global(), limitado a .lista-imagens.
+  */
+
+  .lista-imagens :global(.item-imagem) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.875rem;
+    min-width: 0;
+    width: 100%;
+    padding: clamp(0.875rem, 2vw, 1.25rem);
+    background: #f8fafc;
+    border: 1px solid #dce5ed;
+    border-radius: 0.75rem;
+  }
+
+  .lista-imagens :global(.item-imagem > strong) {
+    display: block;
+    color: #152d43;
+    font-size: 1rem;
+    font-weight: 800;
+    line-height: 1.4;
+  }
+
+  /*
+    A imagem fica limitada a uma pré-visualização.
+    Não aumenta de altura conforme as dimensões originais.
+  */
+
+  .lista-imagens :global(.previsualizacao) {
+    display: block;
+    width: 100%;
+    max-width: 32rem;
+    height: auto;
+    aspect-ratio: 16 / 9;
+    object-fit: cover;
+    object-position: center;
+    background: #e4eaf0;
+    border: 1px solid #dce5ed;
+    border-radius: 0.625rem;
+  }
+
+  /*
+    Etiquetas e campos gerados dinamicamente.
+    Cada um ocupa a sua própria linha.
+  */
+
+  .lista-imagens :global(.item-imagem > label) {
+    display: block;
+    min-width: 0;
+    margin-top: 0.25rem;
+    color: #203247;
+    font-size: 0.8125rem;
+    font-weight: 700;
+    line-height: 1.5;
+  }
+
+  .lista-imagens :global(.item-imagem > input) {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    min-height: 2.75rem;
+    padding: 0.75rem 0.875rem;
+    border: 1px solid #dce5ed;
+    border-radius: 0.5625rem;
+    background: #ffffff;
+    color: #203247;
+    font: inherit;
+    font-size: 0.875rem;
+    line-height: 1.5;
+  }
+
+  .lista-imagens :global(.item-imagem > input[readonly]) {
+    background: #f4f7fa;
+  }
+
+  .lista-imagens :global(.item-imagem > input:focus-visible) {
+    outline: 3px solid #a7d9bd;
+    outline-offset: 2px;
+    border-color: #267a4b;
+  }
+
+  /* ==================================================
+     4. BOTÕES DAS FOTOGRAFIAS
+     ================================================== */
+
+  .acoes-imagem,
+  .lista-imagens :global(.acoes-imagem) {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.625rem;
+    min-width: 0;
+  }
+
+  .lista-imagens :global(.botao-lista) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 2.5rem;
+    padding: 0.625rem 0.875rem;
+    border: 1px solid #d4e0e8;
+    border-radius: 0.5625rem;
+    background: #e6edf2;
+    color: #152d43;
+    font: inherit;
+    font-size: 0.8125rem;
+    font-weight: 700;
+    line-height: 1.4;
+    cursor: pointer;
+    transition:
+      background-color 160ms ease,
+      border-color 160ms ease;
+  }
+
+  .lista-imagens :global(.botao-lista:hover:not(:disabled)) {
+    background: #d5e2e9;
+    border-color: #bdced9;
+  }
+
+  .lista-imagens :global(.botao-lista:disabled) {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .lista-imagens :global(.botao-lista:focus-visible) {
+    outline: 3px solid #a7d9bd;
+    outline-offset: 2px;
+  }
+
+  /*
+    Botões fora da lista dinâmica:
+    carregar, adicionar, guardar e publicar.
+  */
+
+  .botao-carregar,
+  .botao-secundario,
+  .botao-guardar,
+  .botao-publicar,
+  .botao-lista {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    min-height: 2.75rem;
+    padding: 0.75rem 1rem;
+    border: 1px solid transparent;
+    border-radius: 0.625rem;
+    font: inherit;
+    font-size: 0.8125rem;
+    font-weight: 700;
+    line-height: 1.4;
+    text-align: center;
+    cursor: pointer;
+    transition:
+      background-color 160ms ease,
+      border-color 160ms ease;
+  }
+
+  .botao-carregar,
+  .botao-secundario,
+  .botao-guardar {
+    background: #267a4b;
+    color: #ffffff;
+  }
+
+  .botao-carregar:hover,
+  .botao-secundario:hover:not(:disabled),
+  .botao-guardar:hover:not(:disabled) {
+    background: #1f653e;
+  }
+
+  .botao-carregar {
+    flex: 0 1 auto;
+    text-align: center;
+  }
+
+  .botao-secundario {
+    flex: 0 1 auto;
+  }
+
+  .botao-lista {
+    background: #e6edf2;
+    color: #152d43;
+    border-color: #d4e0e8;
+  }
+
+  .botao-lista:hover:not(:disabled) {
+    background: #d5e2e9;
+  }
+
+  .botao-publicar {
+    flex: 0 0 auto;
+    background: #152d43;
+    color: #ffffff;
+  }
+
+  .botao-publicar:hover:not(:disabled) {
+    background: #244762;
+  }
+
+  button:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+
+  .botao-carregar:focus-visible,
+  .botao-secundario:focus-visible,
+  .botao-guardar:focus-visible,
+  .botao-publicar:focus-visible,
+  .botao-lista:focus-visible {
+    outline: 3px solid #a7d9bd;
+    outline-offset: 3px;
+  }
+
+  .ficheiro {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    opacity: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  /* ==================================================
+     5. FOTOGRAFIA DOS ALUNOS
+     ================================================== */
+
+  .bloco > .previsualizacao {
+    display: block;
+    width: 100%;
+    max-width: 32rem;
+    height: auto;
+    aspect-ratio: 16 / 9;
+    object-fit: cover;
+    background: #e4eaf0;
+    border: 1px solid #dce5ed;
+    border-radius: 0.625rem;
+  }
+
+  /* ==================================================
+     6. GUARDAR E PUBLICAR
+     ================================================== */
+
+  .acoes {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 1rem;
+    min-width: 0;
+  }
+
+  .acoes > a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 2.75rem;
+    color: #267a4b;
+    font-size: 0.875rem;
+    font-weight: 700;
+    text-decoration: none;
+  }
+
+  .acoes > a:hover {
+    text-decoration: underline;
+  }
+
+  .form-publicar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1.25rem;
+    min-width: 0;
+    margin-top: 1.5rem;
+    padding: clamp(1rem, 2.5vw, 1.5rem);
+    background: #ffffff;
+    border: 1px solid #dce5ed;
+    border-radius: 0.875rem;
+  }
+
+  .form-publicar > div {
+    min-width: 0;
+  }
+
+  .form-publicar strong {
+    color: #152d43;
+    font-size: 0.9375rem;
+    line-height: 1.5;
+  }
+
+  .form-publicar p {
+    margin: 0.5rem 0 0;
+    color: #75869a;
+    font-size: 0.8125rem;
+    line-height: 1.65;
+  }
+
+  /* ==================================================
+     7. MENSAGENS
+     ================================================== */
+
+  .sucesso,
+  .erro,
+  .informacao {
+    padding: 1rem;
+    margin-bottom: 1rem;
+    border: 1px solid transparent;
+    border-radius: 0.625rem;
+    font-size: 0.875rem;
+    line-height: 1.6;
+  }
+
+  .sucesso {
+    background: #e8f5ec;
+    color: #17603b;
+    border-color: #b7dfc5;
+  }
+
+  .erro {
+    background: #fff0f0;
+    color: #a52525;
+    border-color: #f2c8c8;
+  }
+
+  .informacao {
+    background: #edf4fa;
+    color: #28506f;
+    border-color: #cbdfea;
+  }
+
+  .informacao p {
+    margin: 0.375rem 0 0;
+  }
+
+  [hidden] {
+    display: none !important;
+  }
+
+  /* ==================================================
+     8. TABLET
+     ================================================== */
+
+  @media (max-width: 900px) {
+    .editor {
+      max-width: 100%;
+    }
+
+    .bloco {
+      padding: 1.25rem;
+    }
+
+    .form-publicar {
+      align-items: flex-start;
+    }
+  }
+
+  /* ==================================================
+     9. TELEMÓVEL
+     ================================================== */
+
+  @media (max-width: 600px) {
+    header {
+      margin: 1.25rem 0;
+    }
+
+    h1 {
+      font-size: 1.75rem;
+    }
+
+    .bloco {
+      gap: 0.875rem;
+      padding: 1rem;
+    }
+
+    .lista-imagens {
+      gap: 1rem;
+    }
+
+    .lista-imagens :global(.item-imagem) {
+      gap: 0.75rem;
+      padding: 0.875rem;
+    }
+
+    .lista-imagens :global(.previsualizacao),
+    .bloco > .previsualizacao {
+      max-width: 100%;
+      aspect-ratio: 4 / 3;
+    }
+
+    .acoes-imagem,
+    .lista-imagens :global(.acoes-imagem) {
+      align-items: stretch;
+    }
+
+    .lista-imagens :global(.botao-lista) {
+      flex: 1 1 auto;
+    }
+
+    .botao-carregar,
+    .botao-secundario {
+      flex: 1 1 100%;
+      width: 100%;
+    }
+
+    .acoes,
+    .form-publicar {
+      flex-direction: column;
+      align-items: stretch;
+    }
+
+    .acoes > a,
+    .botao-guardar,
+    .botao-publicar {
+      width: 100%;
+      justify-content: center;
+    }
+  }
+
+  /* ==================================================
+     10. ECRÃS MUITO ESTREITOS
+     ================================================== */
+
+  @media (max-width: 380px) {
+    .bloco {
+      padding: 0.875rem;
+    }
+
+    .lista-imagens :global(.item-imagem) {
+      padding: 0.75rem;
+    }
+
+    .lista-imagens :global(.acoes-imagem) {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .lista-imagens :global(.botao-lista) {
+      width: 100%;
+    }
+  }
+
+  /* ==================================================
+     11. ACESSIBILIDADE
+     ================================================== */
+
+  @media (prefers-reduced-motion: reduce) {
+    .botao-carregar,
+    .botao-secundario,
+    .botao-guardar,
+    .botao-publicar,
+    .botao-lista,
+    .lista-imagens :global(.botao-lista) {
+      transition: none;
+    }
+  }
+</style>

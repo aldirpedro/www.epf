@@ -1,12 +1,16 @@
-
 ---
-import { criarSupabaseServer } from "../lib/supabase/server";
-
 interface Props {
   titulo: string;
   nome?: string;
   perfil?: string;
-  ativo?: "inicio" | "noticias" | "cursos" | "eventos" | "utilizadores";
+  ativo?:
+    | "inicio"
+    | "noticias"
+    | "cursos"
+    | "eventos"
+    | "utilizadores"
+    | "paginas"
+    | "documentacao";
 }
 
 const {
@@ -16,240 +20,375 @@ const {
   ativo,
 } = Astro.props;
 
-// O cargo é obtido do middleware.
 const perfilAdmin = Astro.locals.perfilAdmin;
 
 const eSuperAdmin =
   perfilAdmin?.ativo === true &&
   perfilAdmin.perfil === "super_admin";
 
-// Cliente Supabase associado à sessão do funcionário.
-const supabase = criarSupabaseServer(Astro);
+// As permissões são calculadas no middleware.
+// Não são feitas consultas ao Supabase neste layout.
+const permissoesMenu = Astro.locals.permissoesMenu ?? {};
 
-// Uma secção aparece no menu quando o funcionário
-// tem pelo menos uma permissão nessa secção.
-async function temAcesso(recurso: string): Promise<boolean> {
-  if (eSuperAdmin) {
-    return true;
-  }
-
-  const acoes = [
-    "ver",
-    "criar",
-    "editar",
-    "eliminar",
-    "publicar",
-  ];
-
-  const resultados = await Promise.all(
-    acoes.map((acao) =>
-      supabase.rpc("tem_permissao", {
-        p_recurso: recurso,
-        p_acao: acao,
-      })
-    )
-  );
-
-  return resultados.some(
-    (resultado) =>
-      !resultado.error && resultado.data === true
-  );
+function temAcesso(recurso: string): boolean {
+  return eSuperAdmin || permissoesMenu[recurso] === true;
 }
 
-const [
-  podeVerNoticias,
-  podeVerCursos,
-  podeVerEventos,
-] = await Promise.all([
-  temAcesso("noticias"),
-  temAcesso("cursos"),
-  temAcesso("eventos"),
-]);
+const podeVerNoticias = temAcesso("noticias");
+const podeVerCursos = temAcesso("cursos");
+const podeVerEventos = temAcesso("eventos");
+const podeVerPaginas = temAcesso("paginas");
+const podeVerDocumentacao = temAcesso("documentacao");
 
-// Identificar a secção ativa, incluindo criação e edição.
 const caminho = Astro.url.pathname;
+const caminhoNormalizado = caminho.replace(/\/$/, "") || "/";
+
+// Páginas disponíveis no submenu.
+// Confirmar os caminhos com os nomes reais dos ficheiros.
+const paginasWebsite = [
+  {
+    nome: "Página Inicial",
+    href: "/admin/paginas/inicio",
+  },
+  {
+    nome: "Sobre Nós",
+    href: "/admin/paginas/sobre-nos",
+  },
+  {
+    nome: "Contactos",
+    href: "/admin/paginas/contactos",
+  },
+  {
+    nome: "Qualidade EQAVET",
+    href: "/admin/paginas/qualidade",
+  },
+];
+
+const paginaWebsiteAtiva = paginasWebsite.find(
+  (pagina) => pagina.href === caminhoNormalizado
+)?.href;
 
 const secaoAtiva =
   ativo ??
   (caminho.startsWith("/admin/utilizadores")
     ? "utilizadores"
-    : caminho.startsWith("/admin/noticias")
-      ? "noticias"
-      : caminho.startsWith("/admin/cursos")
-        ? "cursos"
-        : caminho.startsWith("/admin/eventos")
-          ? "eventos"
-          : "inicio");
+    : caminho.startsWith("/admin/paginas")
+      ? "paginas"
+      : caminho.startsWith("/admin/documentacao")
+        ? "documentacao"
+        : caminho.startsWith("/admin/noticias")
+          ? "noticias"
+          : caminho.startsWith("/admin/cursos")
+            ? "cursos"
+            : caminho.startsWith("/admin/eventos")
+              ? "eventos"
+              : "inicio");
 ---
 
 <html lang="pt">
   <head>
     <meta charset="UTF-8" />
+
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1"
     />
+
     <title>{titulo} | EPF</title>
   </head>
 
   <body>
     <div class="admin">
-      <aside class="barra-lateral">
-        <a class="marca" href="/admin/">
-          <img
-            src="/logo.png"
-            alt="Logótipo da Escola Profissional do Fundão"
-            class="marca-logo"
-          />
+      <!-- NAVEGAÇÃO LATERAL -->
+      <aside class="barra-lateral" id="barra-lateral">
+        <div class="lateral-cabecalho">
+          <a class="marca" href="/admin/">
+            <img
+              src="/logo.png"
+              alt="Logótipo da Escola Profissional do Fundão"
+              class="marca-logo"
+            />
 
-          <span class="marca-texto">
-            <strong>Escola Profissional</strong>
-            <small>do Fundão</small>
-            <span class="marca-subtitulo">
-              Administração
+            <span class="marca-texto">
+              <strong>Escola Profissional</strong>
+              <small>do Fundão</small>
+
+              <span class="marca-subtitulo">
+                Administração
+              </span>
             </span>
-          </span>
-        </a>
-
-        <div class="menu-titulo">
-          MENU PRINCIPAL
-        </div>
-
-        <nav aria-label="Navegação administrativa">
-          <a
-            href="/admin/"
-            class:list={[
-              "menu-link",
-              secaoAtiva === "inicio" && "ativo",
-            ]}
-            aria-current={
-              secaoAtiva === "inicio"
-                ? "page"
-                : undefined
-            }
-          >
-            <span class="menu-icone">▦</span>
-            <span>Visão geral</span>
           </a>
 
-          {
-            podeVerNoticias && (
-              <a
-                href="/admin/noticias/"
-                class:list={[
-                  "menu-link",
-                  secaoAtiva === "noticias" && "ativo",
-                ]}
-                aria-current={
-                  secaoAtiva === "noticias"
-                    ? "page"
-                    : undefined
-                }
-              >
-                <span class="menu-icone">▤</span>
-                <span>Notícias</span>
-              </a>
-            )
-          }
+          <!-- Botão do menu para tablet e telemóvel -->
+          <button
+            class="botao-menu"
+            id="botao-menu"
+            type="button"
+            aria-label="Abrir menu de navegação"
+            aria-controls="menu-conteudo"
+            aria-expanded="false"
+          >
+            <span class="botao-menu-linhas" aria-hidden="true">
+              <span></span>
+              <span></span>
+              <span></span>
+            </span>
+          </button>
+        </div>
 
-          {
-            podeVerCursos && (
-              <a
-                href="/admin/cursos/"
-                class:list={[
-                  "menu-link",
-                  secaoAtiva === "cursos" && "ativo",
-                ]}
-                aria-current={
-                  secaoAtiva === "cursos"
-                    ? "page"
-                    : undefined
-                }
-              >
-                <span class="menu-icone">▧</span>
-                <span>Cursos</span>
-              </a>
-            )
-          }
+        <!-- Área de navegação recolhível -->
+        <div class="menu-conteudo" id="menu-conteudo">
+          <div class="menu-titulo">
+            MENU PRINCIPAL
+          </div>
 
-          {
-            podeVerEventos && (
-              <a
-                href="/admin/eventos/"
-                class:list={[
-                  "menu-link",
-                  secaoAtiva === "eventos" && "ativo",
-                ]}
-                aria-current={
-                  secaoAtiva === "eventos"
-                    ? "page"
-                    : undefined
-                }
-              >
-                <span class="menu-icone">▦</span>
-                <span>Eventos</span>
-              </a>
-            )
-          }
+          <nav
+            class="menu-navegacao"
+            aria-label="Navegação administrativa"
+          >
+            <!-- VISÃO GERAL -->
+            <a
+              href="/admin/"
+              class:list={[
+                "menu-link",
+                secaoAtiva === "inicio" && "ativo",
+              ]}
+              aria-current={
+                secaoAtiva === "inicio"
+                  ? "page"
+                  : undefined
+              }
+            >
+              <span class="menu-icone" aria-hidden="true">▦</span>
+              <span>Visão geral</span>
+            </a>
 
-          {
-            eSuperAdmin && (
-              <>
-                <div class="menu-separador" />
-
-                <div class="menu-titulo menu-titulo-secundario">
-                  GESTÃO DO SISTEMA
-                </div>
-
+            <!-- NOTÍCIAS -->
+            {
+              podeVerNoticias && (
                 <a
-                  href="/admin/utilizadores/"
+                  href="/admin/noticias/"
                   class:list={[
                     "menu-link",
-                    secaoAtiva === "utilizadores" && "ativo",
+                    secaoAtiva === "noticias" && "ativo",
                   ]}
                   aria-current={
-                    secaoAtiva === "utilizadores"
+                    secaoAtiva === "noticias"
                       ? "page"
                       : undefined
                   }
                 >
-                  <span class="menu-icone">♙</span>
-                  <span>Utilizadores</span>
+                  <span class="menu-icone" aria-hidden="true">
+                    ▤
+                  </span>
+                  <span>Notícias</span>
                 </a>
-              </>
-            )
-          }
-        </nav>
+              )
+            }
 
-        <div class="lateral-rodape">
-          <a
-            href="/"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="ver-site"
-          >
-            ↗ Ver site público
-          </a>
+            <!-- CURSOS -->
+            {
+              podeVerCursos && (
+                <a
+                  href="/admin/cursos/"
+                  class:list={[
+                    "menu-link",
+                    secaoAtiva === "cursos" && "ativo",
+                  ]}
+                  aria-current={
+                    secaoAtiva === "cursos"
+                      ? "page"
+                      : undefined
+                  }
+                >
+                  <span class="menu-icone" aria-hidden="true">
+                    ▧
+                  </span>
+                  <span>Cursos</span>
+                </a>
+              )
+            }
 
-          <form action="/admin/sair" method="POST">
-            <button type="submit" class="botao-sair">
-              Terminar sessão
-            </button>
-          </form>
+            <!-- EVENTOS -->
+            {
+              podeVerEventos && (
+                <a
+                  href="/admin/eventos/"
+                  class:list={[
+                    "menu-link",
+                    secaoAtiva === "eventos" && "ativo",
+                  ]}
+                  aria-current={
+                    secaoAtiva === "eventos"
+                      ? "page"
+                      : undefined
+                  }
+                >
+                  <span class="menu-icone" aria-hidden="true">
+                    ▦
+                  </span>
+                  <span>Eventos</span>
+                </a>
+              )
+            }
+
+            <!-- PÁGINAS DO WEBSITE -->
+            {
+              podeVerPaginas && (
+                <div class="grupo-paginas">
+                  <details
+                    class="menu-grupo"
+                    open={secaoAtiva === "paginas"}
+                  >
+                    <summary
+                      class:list={[
+                        "menu-link",
+                        "menu-grupo-titulo",
+                        secaoAtiva === "paginas" && "ativo",
+                      ]}
+                      aria-label="Expandir ou recolher Páginas do Website"
+                    >
+                      <span
+                        class="menu-icone"
+                        aria-hidden="true"
+                      >
+                        ▤
+                      </span>
+
+                      <span>Páginas do Website</span>
+
+                      <span
+                        class="menu-seta"
+                        aria-hidden="true"
+                      >
+                        ⌄
+                      </span>
+                    </summary>
+
+                    <div class="menu-subpaginas">
+                      {
+                        paginasWebsite.map((pagina) => (
+                          <a
+                            href={pagina.href}
+                            class:list={[
+                              "menu-sublink",
+                              paginaWebsiteAtiva === pagina.href &&
+                                "ativo",
+                            ]}
+                            aria-current={
+                              paginaWebsiteAtiva === pagina.href
+                                ? "page"
+                                : undefined
+                            }
+                          >
+                            <span
+                              class="menu-subponto"
+                              aria-hidden="true"
+                            />
+                            <span>{pagina.nome}</span>
+                          </a>
+                        ))
+                      }
+                    </div>
+                  </details>
+                </div>
+              )
+            }
+
+            <!-- DOCUMENTAÇÃO -->
+            {
+              podeVerDocumentacao && (
+                <a
+                  href="/admin/documentacao/"
+                  class:list={[
+                    "menu-link",
+                    secaoAtiva === "documentacao" && "ativo",
+                  ]}
+                  aria-current={
+                    secaoAtiva === "documentacao"
+                      ? "page"
+                      : undefined
+                  }
+                >
+                  <span class="menu-icone" aria-hidden="true">
+                    ▣
+                  </span>
+                  <span>Documentação</span>
+                </a>
+              )
+            }
+
+            <!-- GESTÃO DO SISTEMA -->
+            {
+              eSuperAdmin && (
+                <>
+                  <div
+                    class="menu-separador"
+                    aria-hidden="true"
+                  />
+
+                  <div class="menu-titulo menu-titulo-secundario">
+                    GESTÃO DO SISTEMA
+                  </div>
+
+                  <a
+                    href="/admin/utilizadores/"
+                    class:list={[
+                      "menu-link",
+                      secaoAtiva === "utilizadores" && "ativo",
+                    ]}
+                    aria-current={
+                      secaoAtiva === "utilizadores"
+                        ? "page"
+                        : undefined
+                    }
+                  >
+                    <span
+                      class="menu-icone"
+                      aria-hidden="true"
+                    >
+                      ♙
+                    </span>
+                    <span>Utilizadores</span>
+                  </a>
+                </>
+              )
+            }
+          </nav>
+
+          <!-- RODAPÉ DO MENU -->
+          <div class="lateral-rodape">
+            <a
+              href="/"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="ver-site"
+            >
+              ↗ Ver site público
+            </a>
+
+            <form action="/admin/sair" method="POST">
+              <button type="submit" class="botao-sair">
+                Terminar sessão
+              </button>
+            </form>
+          </div>
         </div>
       </aside>
 
+      <!-- ÁREA PRINCIPAL -->
       <div class="principal">
         <header class="topo">
           <div class="topo-identidade">
             <span class="topo-etiqueta">
               ÁREA RESERVADA
             </span>
+
             <strong>Administração EPF</strong>
           </div>
 
           <div class="utilizador">
-            <div class="avatar">
+            <div class="avatar" aria-hidden="true">
               {nome.charAt(0).toUpperCase()}
             </div>
 
@@ -260,63 +399,261 @@ const secaoAtiva =
           </div>
         </header>
 
-        <main class="conteudo">
+        <main class="conteudo" id="conteudo-principal">
           <slot />
         </main>
       </div>
     </div>
+
+    <!-- CONTROLO DO MENU EM ECRÃS PEQUENOS -->
+    <script>
+      const botaoMenu = document.getElementById(
+        "botao-menu"
+      ) as HTMLButtonElement | null;
+
+      const menuConteudo = document.getElementById(
+        "menu-conteudo"
+      );
+
+      const barraLateral = document.getElementById(
+        "barra-lateral"
+      );
+
+      const mediaMenu = window.matchMedia(
+        "(max-width: 900px)"
+      );
+
+      function atualizarEstadoMenu(aberto: boolean) {
+        if (!botaoMenu || !menuConteudo || !barraLateral) {
+          return;
+        }
+
+        const menuAberto = mediaMenu.matches && aberto;
+
+        barraLateral.classList.toggle(
+          "menu-aberto",
+          menuAberto
+        );
+
+        botaoMenu.setAttribute(
+          "aria-expanded",
+          String(menuAberto)
+        );
+
+        botaoMenu.setAttribute(
+          "aria-label",
+          menuAberto
+            ? "Fechar menu de navegação"
+            : "Abrir menu de navegação"
+        );
+
+        if (mediaMenu.matches) {
+          menuConteudo.setAttribute(
+            "aria-hidden",
+            String(!menuAberto)
+          );
+
+          if ("inert" in menuConteudo) {
+            menuConteudo.inert = !menuAberto;
+          }
+        } else {
+          menuConteudo.removeAttribute("aria-hidden");
+
+          if ("inert" in menuConteudo) {
+            menuConteudo.inert = false;
+          }
+        }
+      }
+
+      if (botaoMenu && menuConteudo && barraLateral) {
+        atualizarEstadoMenu(false);
+
+        botaoMenu.addEventListener("click", () => {
+          const estaAberto =
+            barraLateral.classList.contains("menu-aberto");
+
+          atualizarEstadoMenu(!estaAberto);
+        });
+
+        // Fechar o menu com Escape.
+        document.addEventListener("keydown", (evento) => {
+          if (
+            evento.key === "Escape" &&
+            barraLateral.classList.contains("menu-aberto")
+          ) {
+            atualizarEstadoMenu(false);
+            botaoMenu.focus();
+          }
+        });
+
+        // Reajustar o menu quando muda a largura do ecrã.
+        mediaMenu.addEventListener("change", () => {
+          atualizarEstadoMenu(false);
+        });
+
+        // Fechar o menu móvel depois de escolher uma página.
+        menuConteudo
+          .querySelectorAll<HTMLAnchorElement>(
+            ".menu-link, .menu-sublink"
+          )
+          .forEach((ligacao) => {
+            ligacao.addEventListener("click", () => {
+              if (
+                mediaMenu.matches &&
+                ligacao.tagName === "A"
+              ) {
+                atualizarEstadoMenu(false);
+              }
+            });
+          });
+      }
+    </script>
   </body>
 </html>
 
 <style is:global>
-  * {
+  /* ==================================================
+     1. VARIÁVEIS E BASE VISUAL
+     ================================================== */
+
+  :root {
+    --admin-verde: #267a4b;
+    --admin-verde-escuro: #20663f;
+    --admin-verde-claro: #e6f5ec;
+
+    --admin-fundo: #f4f7fa;
+    --admin-superficie: #ffffff;
+
+    --admin-texto: #203247;
+    --admin-texto-secundario: #75869a;
+    --admin-borda: #e4eaf0;
+
+    --admin-raio: 0.75rem;
+
+    --admin-lateral-largura: clamp(
+      14rem,
+      19vw,
+      16.5rem
+    );
+
+    --admin-espacamento: clamp(
+      1rem,
+      2.6vw,
+      2.375rem
+    );
+  }
+
+  *,
+  *::before,
+  *::after {
     box-sizing: border-box;
+  }
+
+  html {
+    min-width: 0;
   }
 
   body {
     margin: 0;
-    background: #f4f7fa;
-    color: #203247;
+    min-width: 0;
+
+    background: var(--admin-fundo);
+    color: var(--admin-texto);
+
     font-family:
       system-ui,
       -apple-system,
       BlinkMacSystemFont,
       "Segoe UI",
       sans-serif;
+
+    -webkit-font-smoothing: antialiased;
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    font-family: inherit;
   }
 
   a {
     text-decoration: none;
   }
 
-  .admin {
-    display: flex;
-    min-height: 100vh;
+  button {
+    -webkit-tap-highlight-color: transparent;
   }
 
-  .barra-lateral {
-    width: 264px;
-    flex-shrink: 0;
+  a:focus-visible,
+  button:focus-visible {
+    outline: 3px solid #a7d9bd;
+    outline-offset: 3px;
+  }
+
+  /* ==================================================
+     2. ESTRUTURA PRINCIPAL
+     ================================================== */
+
+  .admin {
+    display: grid;
+
+    grid-template-columns:
+      var(--admin-lateral-largura)
+      minmax(0, 1fr);
+
     min-height: 100vh;
+    min-height: 100dvh;
+  }
+
+  .principal {
+    min-width: 0;
+
     display: flex;
     flex-direction: column;
-    padding: 28px 16px;
-    background: #267a4b;
-    color: white;
+  }
+
+  /* ==================================================
+     3. BARRA LATERAL
+     ================================================== */
+
+  .barra-lateral {
+    display: flex;
+    flex-direction: column;
+
+    min-width: 0;
+    min-height: 100vh;
+    min-height: 100dvh;
+
+    padding: 1.5rem 1rem;
+
+    background: var(--admin-verde);
+    color: #ffffff;
+  }
+
+  .lateral-cabecalho {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
   }
 
   .marca {
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 4px 10px 30px;
-    color: white;
+    gap: 0.75rem;
+
+    min-width: 0;
+    padding: 0.25rem 0.5rem 1.5rem;
+
+    color: #ffffff;
   }
 
   .marca-logo {
-    width: 58px;
-    height: 58px;
-    flex-shrink: 0;
+    width: 3.625rem;
+    height: 3.625rem;
+
+    flex: 0 0 auto;
     object-fit: contain;
   }
 
@@ -327,174 +664,473 @@ const secaoAtiva =
   }
 
   .marca strong {
-    font-size: 13px;
+    font-size: 0.8125rem;
     line-height: 1.4;
   }
 
   .marca small {
-    margin-top: 2px;
+    margin-top: 0.125rem;
+
     color: rgba(255, 255, 255, 0.9);
-    font-size: 12px;
+    font-size: 0.75rem;
   }
 
   .marca-subtitulo {
-    margin-top: 5px;
+    margin-top: 0.3125rem;
+
     color: rgba(255, 255, 255, 0.75);
-    font-size: 10px;
+
+    font-size: 0.625rem;
     letter-spacing: 0.1em;
     text-transform: uppercase;
   }
 
+  .menu-conteudo {
+    display: flex;
+    flex-direction: column;
+
+    flex: 1;
+    min-height: 0;
+  }
+
   .menu-titulo {
-    padding: 12px 14px;
+    padding: 0.75rem 0.875rem;
+
     color: rgba(255, 255, 255, 0.7);
-    font-size: 10px;
+
+    font-size: 0.625rem;
     font-weight: 800;
     letter-spacing: 0.1em;
   }
 
-  nav {
+  /* ==================================================
+     4. NAVEGAÇÃO PRINCIPAL
+     ================================================== */
+
+  .menu-navegacao {
     display: grid;
-    gap: 5px;
+    align-content: start;
+    gap: 0.25rem;
   }
 
   .menu-link {
+    position: relative;
+
     display: flex;
     align-items: center;
-    gap: 13px;
-    padding: 13px 15px;
-    border-radius: 9px;
+    gap: 0.75rem;
+
+    min-width: 0;
+    min-height: 2.75rem;
+
+    padding: 0.75rem 0.875rem;
+
+    border: 1px solid transparent;
+    border-radius: 0.625rem;
+
     color: rgba(255, 255, 255, 0.88);
-    font-size: 14px;
+
+    font-size: 0.875rem;
     font-weight: 550;
+    line-height: 1.4;
+
+    transition:
+      background-color 160ms ease,
+      color 160ms ease,
+      border-color 160ms ease;
+  }
+
+  .menu-link > span:last-child {
+    min-width: 0;
+    overflow-wrap: anywhere;
   }
 
   .menu-icone {
-    width: 22px;
-    flex-shrink: 0;
-    font-size: 19px;
+    display: inline-grid;
+    place-items: center;
+
+    width: 1.375rem;
+    flex: 0 0 1.375rem;
+
+    font-size: 1.125rem;
+    line-height: 1;
     text-align: center;
   }
 
-  .menu-link:hover,
-  .menu-link.ativo {
-    background: rgba(255, 255, 255, 0.18);
-    color: white;
+  .menu-link:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: #ffffff;
   }
+
+  .menu-link.ativo,
+  .menu-link[aria-current="page"] {
+    background: rgba(255, 255, 255, 0.2);
+    border-color: rgba(255, 255, 255, 0.12);
+
+    color: #ffffff;
+    font-weight: 700;
+  }
+
+  .menu-link.ativo::before,
+  .menu-link[aria-current="page"]::before {
+    content: "";
+
+    position: absolute;
+    top: 20%;
+    bottom: 20%;
+    left: 0;
+
+    width: 0.1875rem;
+
+    border-radius: 0 0.25rem 0.25rem 0;
+    background: #ffffff;
+  }
+
+  .menu-link.ativo:hover,
+  .menu-link[aria-current="page"]:hover {
+    background: rgba(255, 255, 255, 0.24);
+  }
+
+  /* ==================================================
+     5. SUBMENU DAS PÁGINAS DO WEBSITE
+     ================================================== */
+
+  .grupo-paginas,
+  .menu-grupo {
+    min-width: 0;
+  }
+
+  .menu-grupo-titulo {
+    cursor: pointer;
+    list-style: none;
+  }
+
+  .menu-grupo-titulo::-webkit-details-marker {
+    display: none;
+  }
+
+  .menu-grupo-titulo::marker {
+    content: "";
+  }
+
+  .menu-seta {
+    margin-left: auto;
+
+    font-size: 1.125rem;
+    line-height: 1;
+
+    transition: transform 160ms ease;
+  }
+
+  .menu-grupo[open] .menu-seta {
+    transform: rotate(180deg);
+  }
+
+  .menu-subpaginas {
+    display: grid;
+    gap: 0.1875rem;
+
+    margin: 0.25rem 0 0.5rem 1.25rem;
+    padding-left: 0.625rem;
+
+    border-left: 1px solid rgba(255, 255, 255, 0.25);
+  }
+
+  .menu-sublink {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+
+    min-width: 0;
+    min-height: 2.5rem;
+
+    padding: 0.625rem 0.75rem;
+
+    border: 1px solid transparent;
+    border-radius: 0.5rem;
+
+    color: rgba(255, 255, 255, 0.85);
+
+    font-size: 0.8125rem;
+    line-height: 1.4;
+
+    overflow-wrap: anywhere;
+
+    transition:
+      background-color 160ms ease,
+      color 160ms ease;
+  }
+
+  .menu-subponto {
+    width: 0.375rem;
+    height: 0.375rem;
+
+    flex: 0 0 auto;
+
+    border-radius: 50%;
+    background: currentColor;
+    opacity: 0.65;
+  }
+
+  .menu-sublink:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: #ffffff;
+  }
+
+  .menu-sublink.ativo,
+  .menu-sublink[aria-current="page"] {
+    background: rgba(255, 255, 255, 0.2);
+    border-color: rgba(255, 255, 255, 0.12);
+
+    color: #ffffff;
+    font-weight: 700;
+  }
+
+  .menu-grupo-titulo:focus-visible,
+  .menu-sublink:focus-visible {
+    outline: 3px solid #a7d9bd;
+    outline-offset: 2px;
+  }
+
+  /* ==================================================
+     6. SEPARADORES E RODAPÉ
+     ================================================== */
 
   .menu-separador {
     height: 1px;
-    margin: 17px 13px 5px;
+
+    margin: 1rem 0.75rem 0.375rem;
+
     background: rgba(255, 255, 255, 0.2);
   }
 
   .menu-titulo-secundario {
-    padding-top: 12px;
+    padding-top: 0.75rem;
   }
 
   .lateral-rodape {
-    margin-top: auto;
-    padding: 24px 10px 0;
     display: grid;
-    gap: 16px;
+    gap: 1rem;
+
+    margin-top: auto;
+    padding: 1.5rem 0.625rem 0;
   }
 
   .ver-site {
-    color: white;
-    font-size: 13px;
+    display: inline-flex;
+    align-items: center;
+
+    width: fit-content;
+
+    color: #ffffff;
+    font-size: 0.8125rem;
+    line-height: 1.5;
+  }
+
+  .ver-site:hover {
+    text-decoration: underline;
+    text-underline-offset: 0.25rem;
+  }
+
+  .lateral-rodape form {
+    margin: 0;
   }
 
   .botao-sair {
     width: 100%;
-    padding: 12px;
+    min-height: 2.75rem;
+
+    padding: 0.75rem;
+
     border: 1px solid rgba(255, 255, 255, 0.45);
-    border-radius: 8px;
+    border-radius: 0.625rem;
+
     background: transparent;
-    color: white;
+    color: #ffffff;
+
     font: inherit;
-    font-size: 13px;
+    font-size: 0.8125rem;
+    font-weight: 600;
+
     cursor: pointer;
+
+    transition:
+      background-color 160ms ease,
+      border-color 160ms ease;
   }
 
   .botao-sair:hover {
-    background: rgba(255, 255, 255, 0.18);
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.7);
   }
 
-  .principal {
-    flex: 1;
-    min-width: 0;
+  /* ==================================================
+     7. BOTÃO DO MENU MÓVEL
+     ================================================== */
+
+  .botao-menu {
+    display: none;
+    align-items: center;
+    justify-content: center;
+
+    width: 2.75rem;
+    height: 2.75rem;
+
+    flex: 0 0 auto;
+    padding: 0;
+
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    border-radius: 0.625rem;
+
+    background: rgba(255, 255, 255, 0.08);
+    color: #ffffff;
+
+    cursor: pointer;
   }
+
+  .botao-menu:hover {
+    background: rgba(255, 255, 255, 0.16);
+  }
+
+  .botao-menu-linhas {
+    display: grid;
+    gap: 0.3rem;
+  }
+
+  .botao-menu-linhas span {
+    display: block;
+
+    width: 1.2rem;
+    height: 2px;
+
+    border-radius: 2px;
+    background: currentColor;
+
+    transition:
+      transform 180ms ease,
+      opacity 180ms ease;
+  }
+
+  .menu-aberto .botao-menu-linhas span:first-child {
+    transform: translateY(0.425rem) rotate(45deg);
+  }
+
+  .menu-aberto .botao-menu-linhas span:nth-child(2) {
+    opacity: 0;
+  }
+
+  .menu-aberto .botao-menu-linhas span:last-child {
+    transform: translateY(-0.425rem) rotate(-45deg);
+  }
+
+  /* ==================================================
+     8. CABEÇALHO SUPERIOR
+     ================================================== */
 
   .topo {
-    height: 82px;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0 38px;
-    background: white;
-    border-bottom: 1px solid #e4eaf0;
+    gap: 1rem;
+
+    min-height: 5.125rem;
+
+    padding:
+      1rem
+      var(--admin-espacamento);
+
+    background: var(--admin-superficie);
+
+    border-bottom: 1px solid var(--admin-borda);
   }
 
   .topo-identidade {
     display: grid;
-    gap: 4px;
+    gap: 0.25rem;
+    min-width: 0;
   }
 
   .topo-etiqueta {
     color: #8291a2;
-    font-size: 10px;
+
+    font-size: 0.625rem;
     font-weight: 800;
     letter-spacing: 0.1em;
   }
 
   .topo-identidade strong {
-    font-size: 15px;
+    color: #203247;
+    font-size: 0.9375rem;
+    line-height: 1.4;
   }
 
   .utilizador {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 0.75rem;
+
+    min-width: 0;
   }
 
   .avatar {
-    width: 39px;
-    height: 39px;
     display: grid;
     place-items: center;
+
+    width: 2.4375rem;
+    height: 2.4375rem;
+
+    flex: 0 0 auto;
+
     border-radius: 50%;
+
     background: #e1f2e8;
     color: #24744d;
+
     font-weight: 800;
   }
 
   .utilizador-texto {
     display: grid;
-    gap: 3px;
+    gap: 0.1875rem;
+
+    min-width: 0;
   }
 
   .utilizador-texto strong {
-    font-size: 13px;
+    font-size: 0.8125rem;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
   }
 
   .utilizador-texto small {
     color: #8291a2;
-    font-size: 11px;
+    font-size: 0.6875rem;
+    line-height: 1.4;
   }
+
+  /* ==================================================
+     9. CONTEÚDO DAS PÁGINAS
+     ================================================== */
 
   .conteudo {
-    max-width: 1450px;
-    margin: 0 auto;
-    padding: 38px;
+    width: 100%;
+    max-width: 90.625rem;
+    min-width: 0;
+
+    margin-inline: auto;
+    padding: var(--admin-espacamento);
   }
 
-  @media (max-width: 1050px) {
-    .barra-lateral {
-      width: 225px;
-    }
+  .principal,
+  .conteudo {
+    min-width: 0;
   }
 
-  @media (max-width: 760px) {
+  /* ==================================================
+     10. TABLET E ECRÃS INTERMÉDIOS
+     ================================================== */
+
+  @media (max-width: 900px) {
     .admin {
       display: block;
     }
@@ -502,51 +1138,190 @@ const secaoAtiva =
     .barra-lateral {
       width: 100%;
       min-height: auto;
-      padding: 16px;
+
+      padding: 0.875rem 1rem;
+    }
+
+    .lateral-cabecalho {
+      min-height: 3.5rem;
     }
 
     .marca {
-      padding-bottom: 12px;
+      padding: 0;
+    }
+
+    .marca-logo {
+      width: 3rem;
+      height: 3rem;
+    }
+
+    .botao-menu {
+      display: inline-flex;
+    }
+
+    .menu-conteudo {
+      display: none;
+      flex: initial;
+
+      padding-top: 1rem;
+    }
+
+    .barra-lateral.menu-aberto .menu-conteudo {
+      display: flex;
     }
 
     .menu-titulo {
-      display: none;
+      padding-inline: 0.75rem;
     }
 
-    nav {
-      display: flex;
-      flex-wrap: wrap;
+    .menu-navegacao {
+      grid-template-columns: 1fr;
+      gap: 0.25rem;
     }
 
     .menu-link {
-      padding: 10px 12px;
+      min-height: 2.875rem;
+      padding: 0.75rem;
     }
 
-    .menu-separador {
-      display: none;
+    .menu-sublink {
+      min-height: 2.75rem;
     }
 
     .lateral-rodape {
-      margin-top: 16px;
-      padding-top: 12px;
-      border-top: 1px solid rgba(255, 255, 255, 0.3);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
+      margin-top: 1rem;
+
+      padding:
+        1rem
+        0.75rem
+        0.25rem;
+
+      border-top: 1px solid rgba(255, 255, 255, 0.25);
     }
 
-    .botao-sair {
-      width: auto;
+    .lateral-rodape form {
+      width: 100%;
     }
 
     .topo {
-      height: auto;
-      min-height: 70px;
-      padding: 15px 20px;
+      min-height: 4.5rem;
     }
 
     .conteudo {
-      padding: 24px 18px;
+      max-width: 100%;
+    }
+  }
+
+  /* ==================================================
+     11. TELEMÓVEL
+     ================================================== */
+
+  @media (max-width: 600px) {
+    :root {
+      --admin-espacamento: 1rem;
+    }
+
+    .barra-lateral {
+      padding: 0.75rem 1rem;
+    }
+
+    .marca {
+      gap: 0.625rem;
+    }
+
+    .marca-logo {
+      width: 2.75rem;
+      height: 2.75rem;
+    }
+
+    .marca strong {
+      font-size: 0.75rem;
+    }
+
+    .marca small {
+      font-size: 0.6875rem;
+    }
+
+    .marca-subtitulo {
+      font-size: 0.5625rem;
+    }
+
+    .topo {
+      gap: 0.75rem;
+
+      min-height: 4.25rem;
+      padding: 0.875rem 1rem;
+    }
+
+    .topo-identidade strong {
+      font-size: 0.8125rem;
+    }
+
+    .topo-etiqueta {
+      font-size: 0.5625rem;
+    }
+
+    .utilizador {
+      gap: 0.5rem;
+    }
+
+    .avatar {
+      width: 2.125rem;
+      height: 2.125rem;
+
+      font-size: 0.8125rem;
+    }
+
+    .utilizador-texto {
+      max-width: 8rem;
+    }
+
+    .utilizador-texto strong {
+      font-size: 0.75rem;
+    }
+
+    .utilizador-texto small {
+      font-size: 0.625rem;
+    }
+
+    .conteudo {
+      padding: 1rem;
+    }
+  }
+
+  /* ==================================================
+     12. ECRÃS MUITO ESTREITOS
+     ================================================== */
+
+  @media (max-width: 380px) {
+    .utilizador-texto {
+      max-width: 6rem;
+    }
+
+    .topo-identidade strong {
+      font-size: 0.75rem;
+    }
+
+    .conteudo {
+      padding: 0.875rem;
+    }
+
+    .menu-subpaginas {
+      margin-left: 0.875rem;
+    }
+  }
+
+  /* ==================================================
+     13. ACESSIBILIDADE
+     ================================================== */
+
+  @media (prefers-reduced-motion: reduce) {
+    .menu-link,
+    .menu-sublink,
+    .menu-seta,
+    .botao-sair,
+    .botao-menu-linhas span {
+      transition: none;
     }
   }
 </style>

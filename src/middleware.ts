@@ -1,4 +1,3 @@
-
 import { defineMiddleware } from "astro:middleware";
 import { criarSupabaseServer } from "./lib/supabase/server";
 
@@ -20,7 +19,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
 
   const supabase = criarSupabaseServer(context);
 
-  // Confirmar a sessão do utilizador.
+  // Confirmar a sessão antes de renderizar a página.
   const {
     data: { user },
     error: erroAuth,
@@ -30,7 +29,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
     return context.redirect("/admin/login");
   }
 
-  // Consultar o perfil e verificar se está ativo.
+  // Consultar o perfil do utilizador.
   const { data: perfil, error: erroPerfil } = await supabase
     .from("perfis")
     .select("id, nome, perfil, ativo")
@@ -41,8 +40,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
     return context.redirect("/admin/login?erro=acesso");
   }
 
-  // Apenas o Super Admin pode entrar na futura
-  // área de gestão de utilizadores.
+  // Manter a proteção existente dos utilizadores.
   if (
     caminho.startsWith("/admin/utilizadores") &&
     perfil.perfil !== "super_admin"
@@ -57,6 +55,61 @@ export const onRequest = defineMiddleware(async (context, next) => {
     perfil: perfil.perfil,
     ativo: perfil.ativo,
   };
+
+  // Consultar permissões ANTES de renderizar o layout.
+  const recursos = [
+    "noticias",
+    "cursos",
+    "eventos",
+    "paginas",
+    "documentacao",
+  ] as const;
+
+  const acoes = [
+    "ver",
+    "criar",
+    "editar",
+    "eliminar",
+    "publicar",
+  ] as const;
+
+  const eSuperAdmin = perfil.perfil === "super_admin";
+
+  const permissoesMenu: Record<string, boolean> = {};
+
+  if (eSuperAdmin) {
+    for (const recurso of recursos) {
+      permissoesMenu[recurso] = true;
+    }
+  } else {
+    const resultados = await Promise.all(
+      recursos.map(async (recurso) => {
+        for (const acao of acoes) {
+          const { data, error } = await supabase.rpc(
+            "tem_permissao",
+            {
+              p_recurso: recurso,
+              p_acao: acao,
+            }
+          );
+
+          if (!error && data === true) {
+            return [recurso, true] as const;
+          }
+        }
+
+        return [recurso, false] as const;
+      })
+    );
+
+    for (const [recurso, permitido] of resultados) {
+      permissoesMenu[recurso] = permitido;
+    }
+  }
+
+  // Partilhar as permissões com o layout sem novas
+  // consultas Supabase durante a renderização.
+  context.locals.permissoesMenu = permissoesMenu;
 
   return next();
 });

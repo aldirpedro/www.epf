@@ -1,0 +1,589 @@
+---
+import { criarSupabaseServer } from "../../../lib/supabase/server";
+
+export const prerender = false;
+
+Astro.response.headers.set("Cache-Control", "private, no-store");
+
+const supabase = criarSupabaseServer(Astro);
+
+const {
+  data: { user },
+  error: erroAutenticacao,
+} = await supabase.auth.getUser();
+
+if (erroAutenticacao || !user) {
+  return Astro.redirect("/admin/login");
+}
+
+const { data: perfil, error: erroPerfil } = await supabase
+  .from("perfis")
+  .select("perfil, ativo")
+  .eq("id", user.id)
+  .single();
+
+if (erroPerfil || !perfil?.ativo) {
+  return Astro.redirect("/admin");
+}
+
+// Verificar a permissão para criar documentos.
+const {
+  data: podeCriar,
+  error: erroPermissaoCriar,
+} = await supabase.rpc("tem_permissao", {
+  p_recurso: "documentacao",
+  p_acao: "criar",
+});
+
+if (erroPermissaoCriar) {
+  console.error(
+    "Erro ao verificar permissão para criar documentos:",
+    erroPermissaoCriar.message
+  );
+}
+
+if (erroPermissaoCriar || podeCriar !== true) {
+  return Astro.redirect("/admin/documentacao/");
+}
+
+// Consultar a permissão de publicação.
+// Os documentos novos serão sempre guardados como rascunhos.
+const {
+  data: podePublicar,
+  error: erroPermissaoPublicar,
+} = await supabase.rpc("tem_permissao", {
+  p_recurso: "documentacao",
+  p_acao: "publicar",
+});
+
+if (erroPermissaoPublicar) {
+  console.error(
+    "Erro ao verificar permissão de publicação de documentos:",
+    erroPermissaoPublicar.message
+  );
+}
+---
+
+<html lang="pt">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Novo Documento | EPF</title>
+  </head>
+
+  <body>
+    <main>
+      <a href="/admin/documentacao/">
+        ← Voltar à gestão de documentação
+      </a>
+
+      <h1>Novo Documento</h1>
+
+      <p class="introducao">
+        Adiciona um documento institucional. Podes carregar
+        um PDF ou indicar uma ligação externa. O documento
+        será inicialmente guardado como rascunho.
+      </p>
+
+      <form
+        action="/admin/documentacao/criar"
+        method="POST"
+        enctype="multipart/form-data"
+      >
+        <fieldset>
+          <legend>Informação principal</legend>
+
+          <div class="grelha">
+            <div class="campo largo">
+              <label for="titulo">Título do documento *</label>
+
+              <input
+                id="titulo"
+                name="titulo"
+                type="text"
+                required
+                maxlength="240"
+                placeholder="Ex.: Regulamento Interno"
+              />
+            </div>
+
+            <div class="campo largo">
+              <label for="descricao">Descrição</label>
+
+              <textarea
+                id="descricao"
+                name="descricao"
+                rows="4"
+                placeholder="Breve descrição do documento..."
+              ></textarea>
+            </div>
+
+            <div class="campo">
+              <label for="secao">Secção *</label>
+
+              <select id="secao" name="secao" required>
+                <option value="instituicao">
+                  Instituição
+                </option>
+
+                <option value="organizacao">
+                  Organização escolar
+                </option>
+              </select>
+            </div>
+
+            <div class="campo">
+              <label for="ano_letivo">Ano letivo</label>
+
+              <input
+                id="ano_letivo"
+                name="ano_letivo"
+                type="text"
+                maxlength="20"
+                placeholder="Ex.: 2026/2027"
+              />
+            </div>
+
+            <div class="campo">
+              <label for="ordem">
+                Ordem de apresentação
+              </label>
+
+              <input
+                id="ordem"
+                name="ordem"
+                type="number"
+                min="0"
+                step="1"
+                value="0"
+              />
+
+              <small>
+                Os documentos com números mais baixos
+                aparecem primeiro.
+              </small>
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Ficheiro do documento</legend>
+
+          <p class="ajuda">
+            Podes carregar um PDF para o armazenamento
+            privado da EPF ou utilizar uma ligação externa.
+            Preenche apenas uma das opções.
+          </p>
+
+          <div class="campo">
+            <label for="pdf">
+              Carregar documento PDF
+            </label>
+
+            <input
+              id="pdf"
+              name="pdf"
+              type="file"
+              accept=".pdf,application/pdf"
+            />
+
+            <small>
+              Formato permitido: PDF. Tamanho máximo: 10 MB.
+              O ficheiro será guardado num bucket privado
+              do Supabase.
+            </small>
+          </div>
+
+          <div class="separador">
+            <span>OU</span>
+          </div>
+
+          <div class="campo">
+            <label for="url_externa">
+              Ligação externa
+            </label>
+
+            <input
+              id="url_externa"
+              name="url_externa"
+              type="url"
+              maxlength="2000"
+              placeholder="https://..."
+            />
+
+            <small>
+              Utiliza esta opção para documentos alojados
+              noutro endereço. Uma ligação externa pode
+              continuar acessível no servidor de origem,
+              mesmo que seja ocultada no website da EPF.
+            </small>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Visibilidade e consulta</legend>
+
+          <p class="ajuda">
+            Estas duas opções são independentes.
+            Podes apresentar o título de um documento
+            no website sem permitir a abertura do PDF.
+          </p>
+
+          <label class="checkbox">
+            <input
+              type="checkbox"
+              name="mostrar_no_website"
+              value="true"
+              checked
+            />
+
+            <span>
+              <strong>Mostrar no website</strong>
+
+              <small>
+                Apresentar o título do documento na
+                página pública de Documentos Institucionais,
+                depois de publicado.
+              </small>
+            </span>
+          </label>
+
+          <label class="checkbox">
+            <input
+              type="checkbox"
+              name="permitir_abrir_pdf"
+              value="true"
+            />
+
+            <span>
+              <strong>Permitir abrir PDF</strong>
+
+              <small>
+                Autorizar a abertura do ficheiro pelo público.
+                Se esta opção estiver desmarcada, o documento
+                será apresentado como consulta restrita.
+              </small>
+            </span>
+          </label>
+
+          <div class="aviso-seguranca">
+            <strong>Segurança dos documentos</strong>
+
+            <p>
+              Os PDFs carregados ficam num armazenamento
+              privado. A abertura pública dependerá de
+              uma verificação de autorização no servidor,
+              que será implementada antes de disponibilizarmos
+              os documentos ao público.
+            </p>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Publicação</legend>
+
+          <div class="estado-publicacao">
+            <span class="estado-rascunho">
+              Rascunho
+            </span>
+
+            <div>
+              <strong>Guardar sem publicar</strong>
+
+              <p class="ajuda">
+                O novo documento não ficará imediatamente
+                disponível no website público.
+              </p>
+            </div>
+          </div>
+
+          {
+            podePublicar === true ? (
+              <p class="ajuda publicacao-ajuda">
+                Tens permissão para publicar documentos.
+                Poderás publicá-los posteriormente na
+                respetiva página de gestão.
+              </p>
+            ) : (
+              <p class="ajuda publicacao-ajuda">
+                Não tens permissão para publicar documentos.
+                A publicação terá de ser efetuada por
+                um utilizador autorizado.
+              </p>
+            )
+          }
+        </fieldset>
+
+        <div class="acoes">
+          <a class="cancelar" href="/admin/documentacao/">
+            Cancelar
+          </a>
+
+          <button type="submit" class="guardar">
+            Guardar documento
+          </button>
+        </div>
+      </form>
+    </main>
+  </body>
+</html>
+
+<style>
+  body {
+    margin: 0;
+    background: #f3f6fa;
+    color: #1e293b;
+    font-family: system-ui, sans-serif;
+  }
+
+  main {
+    max-width: 900px;
+    margin: 45px auto;
+    padding: 0 24px 60px;
+  }
+
+  a {
+    color: #16365c;
+    text-decoration: none;
+    font-weight: 600;
+  }
+
+  h1 {
+    margin: 28px 0 8px;
+    color: #16365c;
+  }
+
+  .introducao {
+    color: #64748b;
+    margin-bottom: 28px;
+    line-height: 1.7;
+  }
+
+  form {
+    display: grid;
+    gap: 22px;
+  }
+
+  fieldset {
+    min-width: 0;
+    padding: 24px;
+    margin: 0;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    background: white;
+  }
+
+  legend {
+    padding: 0 8px;
+    color: #16365c;
+    font-weight: 700;
+    font-size: 18px;
+  }
+
+  .grelha {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 18px;
+  }
+
+  .campo {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 18px;
+  }
+
+  .campo:last-child {
+    margin-bottom: 0;
+  }
+
+  .largo {
+    grid-column: 1 / -1;
+  }
+
+  label {
+    font-weight: 600;
+    font-size: 14px;
+  }
+
+  input,
+  select,
+  textarea {
+    box-sizing: border-box;
+    width: 100%;
+    padding: 12px;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    background: white;
+    color: #1e293b;
+    font: inherit;
+  }
+
+  input[type="file"] {
+    cursor: pointer;
+  }
+
+  input:focus,
+  select:focus,
+  textarea:focus {
+    outline: 2px solid #16365c;
+    outline-offset: 1px;
+  }
+
+  textarea {
+    resize: vertical;
+  }
+
+  small,
+  .ajuda {
+    color: #64748b;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .ajuda {
+    margin-top: 0;
+  }
+
+  .separador {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin: 18px 0 24px;
+    color: #94a3b8;
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  .separador::before,
+  .separador::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: #e2e8f0;
+  }
+
+  .checkbox {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    margin: 18px 0;
+    cursor: pointer;
+  }
+
+  .checkbox input {
+    width: auto;
+    flex-shrink: 0;
+    margin-top: 3px;
+    accent-color: #16365c;
+  }
+
+  .checkbox span {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .checkbox strong {
+    font-size: 14px;
+  }
+
+  .checkbox small {
+    font-weight: 400;
+  }
+
+  .aviso-seguranca {
+    margin-top: 24px;
+    padding: 16px 18px;
+    border: 1px solid #d7e6f4;
+    border-radius: 10px;
+    background: #f0f7ff;
+  }
+
+  .aviso-seguranca strong {
+    color: #16365c;
+    font-size: 14px;
+  }
+
+  .aviso-seguranca p {
+    margin: 8px 0 0;
+    color: #53677c;
+    font-size: 13px;
+    line-height: 1.7;
+  }
+
+  .estado-publicacao {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+  }
+
+  .estado-publicacao strong {
+    display: block;
+    margin-bottom: 7px;
+    font-size: 14px;
+  }
+
+  .estado-rascunho {
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 10px;
+    border-radius: 6px;
+    background: #fff1e1;
+    color: #a66c20;
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  .publicacao-ajuda {
+    margin-top: 16px;
+  }
+
+  .acoes {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .cancelar {
+    padding: 12px 18px;
+  }
+
+  .guardar {
+    padding: 13px 22px;
+    background: #16365c;
+    border: none;
+    border-radius: 8px;
+    color: white;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .guardar:hover {
+    background: #234e7d;
+  }
+
+  @media (max-width: 650px) {
+    main {
+      padding: 0 16px 40px;
+    }
+
+    .grelha {
+      grid-template-columns: 1fr;
+    }
+
+    .largo {
+      grid-column: auto;
+    }
+
+    fieldset {
+      padding: 18px;
+    }
+
+    .acoes {
+      flex-wrap: wrap;
+    }
+  }
+</style>
