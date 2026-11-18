@@ -6,3 +6,6 @@ dist/
 !.env.example
 .DS_Store
 .vercel
+
+# Documentos internos (não publicar)
+proposta/

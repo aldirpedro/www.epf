@@ -136,16 +136,26 @@ const grupoAtivo = (grupo: (typeof navegacao)[number]) => {
         }
       </ul>
 
-      {
-        site.inscricoes.abertas && (
-          <a
-            href="/inscricoes/"
-            class="botao botao--primario nav__cta"
-          >
-            Inscreve-te
-          </a>
-        )
-      }
+      <div class="nav__acoes">
+        {
+          site.inscricoes.abertas && (
+            <a
+              href="/inscricoes/"
+              class="botao botao--primario nav__cta"
+            >
+              Inscreve-te
+            </a>
+          )
+        }
+
+        <a
+          href={site.inovar}
+          class="botao botao--inovar nav__cta"
+          rel="noopener"
+        >
+          Inovar Consulta
+        </a>
+      </div>
     </nav>
   </div>
 </header>
@@ -372,13 +382,29 @@ const grupoAtivo = (grupo: (typeof navegacao)[number]) => {
     color: var(--texto-suave);
   }
 
+  .nav__acoes {
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  /* Cor do Inovar Consulta, para se reconhecer a plataforma externa. */
+  .botao--inovar {
+    background: #047792;
+    color: #fff;
+  }
+
+  .botao--inovar:hover {
+    background: #035f75;
+    color: #fff;
+  }
+
   .nav__cta {
     padding: 0.6rem 1.1rem;
     font-size: 0.94rem;
     white-space: nowrap;
   }
 
-  @media (max-width: 1080px) {
+  @media (max-width: 1240px) {
     .cabecalho__menu {
       display: block;
     }
@@ -418,6 +444,10 @@ const grupoAtivo = (grupo: (typeof navegacao)[number]) => {
       border: 0;
       box-shadow: none;
       padding: 0 0 0.5rem 0.5rem;
+    }
+
+    .nav__acoes {
+      flex-direction: column;
     }
 
     .nav__cta {
