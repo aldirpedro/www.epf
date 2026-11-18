@@ -16,6 +16,8 @@ export const site = {
   mapa: 'https://maps.google.com/maps?q=Rua+Cidade+de+Salamanca%2C+n%C2%BA+1%2C+Fund%C3%A3o+6230-370%2C+Portugal',
   livroReclamacoes: 'https://www.livroreclamacoes.pt/Inicio/',
   social: [{ nome: 'Facebook', url: 'https://www.facebook.com/EscolaProfissionalFundao' }],
+  // Área de consulta do Inovar, com início de sessão.
+  inovar: 'https://epfundao.inovarmais.com/consulta/app/index.html#/login',
   inscricoes: { abertas: true, anoLetivo: '2026/2027' },
 };
 
