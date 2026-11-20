@@ -1,10 +1,13 @@
 import type { APIRoute } from "astro";
+import { createClient } from "@supabase/supabase-js";
 import { randomUUID } from "node:crypto";
 import { criarSupabaseServer } from "../../../lib/supabase/server";
 
 export const prerender = false;
 
-const MAX_PDF_BYTES = 10 * 1024 * 1024;
+const BUCKET = "documentacao-privada";
+const MAX_PDF_BYTES = 25 * 1024 * 1024;
+const MAX_UPLOAD_ANTIGO = 3 * 1024 * 1024;
 
 function respostaErro(
   mensagem: string,
@@ -15,30 +18,42 @@ function respostaErro(
     headers: {
       "Content-Type": "text/plain; charset=utf-8",
       "Cache-Control": "no-store",
+      "X-Content-Type-Options": "nosniff",
     },
   });
 }
 
-function texto(
-  dados: FormData,
-  campo: string
-): string {
+function texto(dados: FormData, campo: string): string {
   const valor = dados.get(campo);
-
-  return typeof valor === "string"
-    ? valor.trim()
-    : "";
+  return typeof valor === "string" ? valor.trim() : "";
 }
 
-function checkbox(
-  dados: FormData,
-  campo: string
-): boolean {
+function checkbox(dados: FormData, campo: string): boolean {
   return dados.get(campo) === "true";
+}
+
+function assinaturaPdfValida(
+  bytes: Uint8Array
+): boolean {
+  return (
+    bytes.length >= 5 &&
+    bytes[0] === 0x25 &&
+    bytes[1] === 0x50 &&
+    bytes[2] === 0x44 &&
+    bytes[3] === 0x46 &&
+    bytes[4] === 0x2d
+  );
 }
 
 export const POST: APIRoute = async (context) => {
   const { request, redirect } = context;
+
+  const origem = request.headers.get("origin");
+  const origemEsperada = new URL(request.url).origin;
+
+  if (origem !== origemEsperada) {
+    return respostaErro("Origem não autorizada.", 403);
+  }
 
   const supabase = criarSupabaseServer(context);
 
@@ -48,7 +63,10 @@ export const POST: APIRoute = async (context) => {
   } = await supabase.auth.getUser();
 
   if (erroAutenticacao || !user) {
-    return redirect("/admin/login");
+    return respostaErro(
+      "É necessário iniciar sessão.",
+      401
+    );
   }
 
   const { data: perfil, error: erroPerfil } =
@@ -58,7 +76,7 @@ export const POST: APIRoute = async (context) => {
       .eq("id", user.id)
       .single();
 
-  if (erroPerfil || !perfil?.ativo) {
+  if (erroPerfil || perfil?.ativo !== true) {
     return respostaErro(
       "Não tens autorização para criar documentos.",
       403
@@ -100,7 +118,7 @@ export const POST: APIRoute = async (context) => {
     dados = await request.formData();
   } catch {
     return respostaErro(
-      "Não foi possível ler os dados do formulário.",
+      "Não foi possível ler o formulário.",
       400
     );
   }
@@ -111,6 +129,7 @@ export const POST: APIRoute = async (context) => {
   const anoLetivo = texto(dados, "ano_letivo");
   const ordemTexto = texto(dados, "ordem");
   const urlExterna = texto(dados, "url_externa");
+  const caminhoUpload = texto(dados, "caminho_upload");
 
   const mostrarNoWebsite = checkbox(
     dados,
@@ -125,6 +144,13 @@ export const POST: APIRoute = async (context) => {
   if (!titulo || titulo.length > 240) {
     return respostaErro(
       "O título é obrigatório e não pode ultrapassar 240 caracteres.",
+      400
+    );
+  }
+
+  if (descricao.length > 10000) {
+    return respostaErro(
+      "A descrição é demasiado longa.",
       400
     );
   }
@@ -150,15 +176,23 @@ export const POST: APIRoute = async (context) => {
 
   if (
     !Number.isSafeInteger(ordem) ||
-    ordem < 0
+    ordem < 0 ||
+    ordem > 2147483647
   ) {
     return respostaErro(
-      "A ordem de apresentação deve ser um número inteiro igual ou superior a zero.",
+      "A ordem de apresentação é inválida.",
       400
     );
   }
 
   if (urlExterna) {
+    if (urlExterna.length > 2000) {
+      return respostaErro(
+        "A ligação externa é demasiado longa.",
+        400
+      );
+    }
+
     try {
       const url = new URL(urlExterna);
 
@@ -186,27 +220,237 @@ export const POST: APIRoute = async (context) => {
       ? valorPdf
       : null;
 
-  if (ficheiroPdf && urlExterna) {
+  const numeroFontes =
+    Number(Boolean(ficheiroPdf)) +
+    Number(Boolean(caminhoUpload)) +
+    Number(Boolean(urlExterna));
+
+  if (numeroFontes > 1) {
     return respostaErro(
-      "Escolhe apenas uma opção: carregar um PDF ou indicar uma ligação externa.",
+      "Escolhe apenas uma fonte para o documento.",
       400
     );
   }
 
-  if (
-    ficheiroPdf &&
-    ficheiroPdf.size > MAX_PDF_BYTES
-  ) {
+  const urlSupabase =
+    import.meta.env.PUBLIC_SUPABASE_URL;
+
+  const chaveSecreta =
+    import.meta.env.SUPABASE_SECRET_KEY;
+
+  if (!urlSupabase || !chaveSecreta) {
+    console.error(
+      "Configuração do Supabase incompleta."
+    );
+
     return respostaErro(
-      "O PDF não pode ultrapassar 10 MB.",
-      400
+      "Serviço de armazenamento indisponível.",
+      500
     );
   }
+
+  const supabaseAdmin = createClient(
+    urlSupabase,
+    chaveSecreta,
+    {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    }
+  );
+
+  // Novo fluxo: PDF previamente enviado ao Supabase.
+  if (caminhoUpload) {
+    const expressao = new RegExp(
+      `^${user.id}/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\\.pdf$`,
+      "i"
+    );
+
+    if (!expressao.test(caminhoUpload)) {
+      return respostaErro(
+        "O caminho do PDF não está autorizado.",
+        403
+      );
+    }
+
+    // Confirmar que existe uma autorização pendente,
+    // emitida para este utilizador e este caminho.
+    const {
+      data: autorizacao,
+      error: erroAutorizacao,
+    } = await supabaseAdmin
+      .from("documentacao_uploads")
+      .select(
+        "id, tamanho_declarado, expira_em, estado"
+      )
+      .eq("utilizador_id", user.id)
+      .eq("caminho_pdf", caminhoUpload)
+      .eq("estado", "pendente")
+      .gt("expira_em", new Date().toISOString())
+      .maybeSingle();
+
+    if (erroAutorizacao) {
+      console.error(
+        "Erro ao consultar autorização:",
+        erroAutorizacao.message
+      );
+
+      return respostaErro(
+        "Não foi possível verificar a autorização.",
+        500
+      );
+    }
+
+    if (!autorizacao) {
+      return respostaErro(
+        "A autorização do PDF é inválida, expirou ou já foi utilizada.",
+        403
+      );
+    }
+
+    // Confirmar que o ficheiro existe no bucket privado.
+    const nomePdf = caminhoUpload.split("/").at(-1)!;
+
+    const {
+      data: ficheiros,
+      error: erroListagem,
+    } = await supabaseAdmin.storage
+      .from(BUCKET)
+      .list(user.id, {
+        search: nomePdf,
+        limit: 100,
+      });
+
+    if (erroListagem) {
+      console.error(
+        "Erro ao consultar Storage:",
+        erroListagem.message
+      );
+
+      return respostaErro(
+        "Não foi possível verificar o PDF.",
+        500
+      );
+    }
+
+    const ficheiroArmazenado = ficheiros?.find(
+      (item) => item.name === nomePdf
+    );
+
+    if (!ficheiroArmazenado) {
+      return respostaErro(
+        "O PDF ainda não foi carregado.",
+        400
+      );
+    }
+
+    const tamanhoMetadados = Number(
+      ficheiroArmazenado.metadata?.size
+    );
+
+    if (
+      !Number.isSafeInteger(tamanhoMetadados) ||
+      tamanhoMetadados <= 0 ||
+      tamanhoMetadados > MAX_PDF_BYTES ||
+      tamanhoMetadados !==
+        Number(autorizacao.tamanho_declarado)
+    ) {
+      return respostaErro(
+        "O tamanho do PDF não corresponde ao carregamento autorizado.",
+        400
+      );
+    }
+
+    // Verificar os bytes reais do PDF no servidor.
+    const {
+      data: pdfArmazenado,
+      error: erroLeitura,
+    } = await supabaseAdmin.storage
+      .from(BUCKET)
+      .download(caminhoUpload);
+
+    if (erroLeitura || !pdfArmazenado) {
+      return respostaErro(
+        "Não foi possível validar o PDF.",
+        400
+      );
+    }
+
+    if (
+      pdfArmazenado.size !== tamanhoMetadados ||
+      pdfArmazenado.size > MAX_PDF_BYTES
+    ) {
+      return respostaErro(
+        "O tamanho real do PDF é inválido.",
+        400
+      );
+    }
+
+    const bytes = new Uint8Array(
+      await pdfArmazenado.arrayBuffer()
+    );
+
+    if (!assinaturaPdfValida(bytes)) {
+      return respostaErro(
+        "O ficheiro não contém uma assinatura PDF válida.",
+        400
+      );
+    }
+
+    // A função SQL consome a autorização e cria
+    // o documento na mesma transação.
+    // Uma segunda utilização falha automaticamente.
+    const {
+      error: erroCriacao,
+    } = await supabaseAdmin.rpc(
+      "criar_documento_upload_validado",
+      {
+        p_utilizador_id: user.id,
+        p_caminho_pdf: caminhoUpload,
+        p_tamanho_validado: bytes.length,
+        p_titulo: titulo,
+        p_descricao: descricao || null,
+        p_secao: secao,
+        p_ano_letivo: anoLetivo || null,
+        p_ordem: ordem,
+        p_mostrar_no_website: mostrarNoWebsite,
+        p_permitir_abrir_pdf: permitirAbrirPdf,
+      }
+    );
+
+    if (erroCriacao) {
+      console.error(
+        "Erro na criação transacional do documento:",
+        erroCriacao.message
+      );
+
+      return respostaErro(
+        "Não foi possível guardar o documento. A autorização pode ter expirado ou já ter sido utilizada.",
+        409
+      );
+    }
+
+    return redirect(
+      "/admin/documentacao/?criado=1",
+      303
+    );
+  }
+
+  // Compatibilidade com carregamentos antigos e pequenos.
+  // O formulário novo não envia bytes para esta função.
+  let caminhoPdf: string | null = null;
 
   if (ficheiroPdf) {
-    const nomeValido = /\.pdf$/i.test(
-      ficheiroPdf.name
-    );
+    if (ficheiroPdf.size > MAX_UPLOAD_ANTIGO) {
+      return respostaErro(
+        "Utiliza o carregamento direto para este PDF.",
+        413
+      );
+    }
+
+    const nomeValido =
+      /\.pdf$/i.test(ficheiroPdf.name);
 
     const tipoValido =
       ficheiroPdf.type === "application/pdf" ||
@@ -218,24 +462,12 @@ export const POST: APIRoute = async (context) => {
         400
       );
     }
-  }
 
-  let caminhoPdf: string | null = null;
-
-  if (ficheiroPdf) {
     const bytes = new Uint8Array(
       await ficheiroPdf.arrayBuffer()
     );
 
-    const assinaturaPdf =
-      bytes.length >= 5 &&
-      bytes[0] === 0x25 &&
-      bytes[1] === 0x50 &&
-      bytes[2] === 0x44 &&
-      bytes[3] === 0x46 &&
-      bytes[4] === 0x2d;
-
-    if (!assinaturaPdf) {
+    if (!assinaturaPdfValida(bytes)) {
       return respostaErro(
         "O ficheiro não contém uma assinatura PDF válida.",
         400
@@ -245,8 +477,8 @@ export const POST: APIRoute = async (context) => {
     caminhoPdf = `${randomUUID()}.pdf`;
 
     const { error: erroUpload } =
-      await supabase.storage
-        .from("documentacao-privada")
+      await supabaseAdmin.storage
+        .from(BUCKET)
         .upload(caminhoPdf, bytes, {
           contentType: "application/pdf",
           cacheControl: "3600",
@@ -255,17 +487,20 @@ export const POST: APIRoute = async (context) => {
 
     if (erroUpload) {
       console.error(
-        "Erro ao carregar PDF institucional:",
+        "Erro ao carregar PDF:",
         erroUpload.message
       );
 
       return respostaErro(
-        "Não foi possível carregar o PDF. Tenta novamente.",
+        "Não foi possível carregar o PDF.",
         500
       );
     }
   }
 
+  // Documentos com ligação externa ou sem PDF,
+  // e compatibilidade com pequenos carregamentos antigos.
+  // Todos são criados como rascunhos.
   const { error: erroInsercao } =
     await supabase
       .from("documentacao")
@@ -286,19 +521,19 @@ export const POST: APIRoute = async (context) => {
 
   if (erroInsercao) {
     console.error(
-      "Erro ao guardar documento institucional:",
+      "Erro ao guardar documento:",
       erroInsercao.message
     );
 
-    if (caminhoPdf) {
+    if (ficheiroPdf && caminhoPdf) {
       const { error: erroLimpeza } =
-        await supabase.storage
-          .from("documentacao-privada")
+        await supabaseAdmin.storage
+          .from(BUCKET)
           .remove([caminhoPdf]);
 
       if (erroLimpeza) {
         console.error(
-          "Não foi possível remover o PDF após falha de gravação:",
+          "Erro ao limpar PDF:",
           erroLimpeza.message
         );
       }
