@@ -1,7 +1,8 @@
+
 ---
 import Pagina from '../layouts/Pagina.astro';
 import ListaDocumentos from '../components/ListaDocumentos.astro';
-import { eqavet, type Documento } from '../data/documentos';
+import type { Documento } from '../data/documentos';
 import { criarSupabaseServer } from '../lib/supabase/server';
 
 export const prerender = false;
@@ -90,7 +91,6 @@ const fases = [
   },
 ];
 
-// Validar os endereços dos documentos antes de os apresentar.
 function urlValida(valor: string): boolean {
   if (
     valor.startsWith('/') &&
@@ -110,7 +110,8 @@ function urlValida(valor: string): boolean {
       return false;
     }
 
-    // Compatibilidade com os documentos do antigo website EPF.
+    // Manter compatibilidade com URLs de documentos
+    // existentes, incluindo os do antigo website.
     if (url.protocol === 'http:') {
       return (
         url.hostname === 'www.epfundao.edu.pt' &&
@@ -119,7 +120,6 @@ function urlValida(valor: string): boolean {
       );
     }
 
-    // Inclui os PDFs públicos do Supabase Storage.
     return url.protocol === 'https:';
   } catch {
     return false;
@@ -170,9 +170,9 @@ const documentoValido = (valor: unknown): valor is Documento => {
   return true;
 };
 
-// Usar os documentos publicados no painel administrativo.
-// Na ausência dessa lista, manter os documentos originais.
-// Uma lista vazia publicada é respeitada.
+// Apresentar exclusivamente documentos publicados
+// através do painel administrativo e guardados no Supabase.
+// Nunca recorrer à lista antiga definida no código.
 const documentosPublicados = conteudo.documentos;
 
 const documentos: Documento[] =
@@ -187,7 +187,7 @@ const documentos: Documento[] =
           ? { nota: documento.nota.trim() }
           : {}),
       }))
-    : eqavet;
+    : [];
 ---
 
 <Pagina
@@ -200,7 +200,17 @@ const documentos: Documento[] =
       <div>
         <h2>{tituloDocumentos}</h2>
 
-        <ListaDocumentos documentos={documentos} />
+        {
+          documentos.length > 0 ? (
+            <ListaDocumentos documentos={documentos} />
+          ) : (
+            <p class="sem-documentos">
+              {error
+                ? 'Não foi possível carregar os documentos neste momento.'
+                : 'Ainda não existem documentos publicados nesta secção.'}
+            </p>
+          )
+        }
       </div>
 
       <aside>
@@ -224,6 +234,12 @@ const documentos: Documento[] =
 </Pagina>
 
 <style>
+  .sem-documentos {
+    margin: 1rem 0;
+    font-size: 0.95rem;
+    color: var(--texto-suave);
+  }
+
   .ciclo {
     margin: 0;
     padding: 0;
