@@ -1,3 +1,4 @@
+
 ---
 import { criarSupabaseServer } from "../../../lib/supabase/server";
 
@@ -26,7 +27,6 @@ if (erroPerfil || !perfil?.ativo) {
   return Astro.redirect("/admin");
 }
 
-// Verificar a permissão para criar documentos.
 const {
   data: podeCriar,
   error: erroPermissaoCriar,
@@ -46,8 +46,6 @@ if (erroPermissaoCriar || podeCriar !== true) {
   return Astro.redirect("/admin/documentacao/");
 }
 
-// Consultar a permissão de publicação.
-// Os documentos novos serão sempre guardados como rascunhos.
 const {
   data: podePublicar,
   error: erroPermissaoPublicar,
@@ -86,6 +84,7 @@ if (erroPermissaoPublicar) {
       </p>
 
       <form
+        id="formulario-documento"
         action="/admin/documentacao/criar"
         method="POST"
         enctype="multipart/form-data"
@@ -188,9 +187,9 @@ if (erroPermissaoPublicar) {
             />
 
             <small>
-              Formato permitido: PDF. Tamanho máximo: 10 MB.
-              O ficheiro será guardado num bucket privado
-              do Supabase.
+              Formato permitido: PDF. Tamanho máximo: 25 MB.
+              O ficheiro será enviado diretamente para
+              o armazenamento privado do Supabase.
             </small>
           </div>
 
@@ -271,10 +270,9 @@ if (erroPermissaoPublicar) {
 
             <p>
               Os PDFs carregados ficam num armazenamento
-              privado. A abertura pública dependerá de
-              uma verificação de autorização no servidor,
-              que será implementada antes de disponibilizarmos
-              os documentos ao público.
+              privado. A abertura pública depende das
+              permissões de consulta e da publicação
+              do documento.
             </p>
           </div>
         </fieldset>
@@ -314,12 +312,24 @@ if (erroPermissaoPublicar) {
           }
         </fieldset>
 
+        <p
+          id="estado-carregamento"
+          class="estado-carregamento"
+          role="status"
+          aria-live="polite"
+          hidden
+        ></p>
+
         <div class="acoes">
           <a class="cancelar" href="/admin/documentacao/">
             Cancelar
           </a>
 
-          <button type="submit" class="guardar">
+          <button
+            id="botao-guardar"
+            type="submit"
+            class="guardar"
+          >
             Guardar documento
           </button>
         </div>
@@ -327,6 +337,306 @@ if (erroPermissaoPublicar) {
     </main>
   </body>
 </html>
+
+<script>
+  import { createClient } from "@supabase/supabase-js";
+
+  const MAX_PDF_BYTES = 25 * 1024 * 1024;
+
+  const formulario = document.querySelector<HTMLFormElement>(
+    "#formulario-documento"
+  );
+
+  const campoPdf = document.querySelector<HTMLInputElement>(
+    "#pdf"
+  );
+
+  const campoUrl = document.querySelector<HTMLInputElement>(
+    "#url_externa"
+  );
+
+  const botaoGuardar =
+    document.querySelector<HTMLButtonElement>(
+      "#botao-guardar"
+    );
+
+  const estado =
+    document.querySelector<HTMLParagraphElement>(
+      "#estado-carregamento"
+    );
+
+  let emCurso = false;
+
+  function mostrarEstado(
+    mensagem: string,
+    erro = false
+  ): void {
+    if (!estado) return;
+
+    estado.hidden = false;
+    estado.textContent = mensagem;
+    estado.classList.toggle("erro", erro);
+  }
+
+  function alterarEstadoBotao(
+    ocupado: boolean
+  ): void {
+    if (!botaoGuardar) return;
+
+    botaoGuardar.disabled = ocupado;
+    botaoGuardar.textContent = ocupado
+      ? "A guardar documento..."
+      : "Guardar documento";
+  }
+
+  async function lerErro(
+    resposta: Response
+  ): Promise<string> {
+    const tipo =
+      resposta.headers.get("content-type") ?? "";
+
+    try {
+      if (tipo.includes("application/json")) {
+        const dados = await resposta.json();
+
+        if (
+          dados &&
+          typeof dados.mensagem === "string"
+        ) {
+          return dados.mensagem;
+        }
+      }
+
+      if (tipo.includes("text/plain")) {
+        const mensagem = await resposta.text();
+
+        if (mensagem) {
+          return mensagem;
+        }
+      }
+    } catch {
+      // Utilizar a mensagem genérica.
+    }
+
+    return "Não foi possível concluir a operação.";
+  }
+
+  formulario?.addEventListener("submit", async (evento) => {
+    evento.preventDefault();
+
+    if (
+      emCurso ||
+      !formulario ||
+      !campoPdf ||
+      !campoUrl
+    ) {
+      return;
+    }
+
+    if (!formulario.reportValidity()) {
+      return;
+    }
+
+    const ficheiro = campoPdf.files?.[0] ?? null;
+    const urlExterna = campoUrl.value.trim();
+
+    if (ficheiro && urlExterna) {
+      mostrarEstado(
+        "Escolhe apenas uma opção: PDF ou ligação externa.",
+        true
+      );
+      return;
+    }
+
+    if (ficheiro) {
+      if (
+        !/\.pdf$/i.test(ficheiro.name) ||
+        (
+          ficheiro.type !== "application/pdf" &&
+          ficheiro.type !== ""
+        )
+      ) {
+        mostrarEstado(
+          "Seleciona um ficheiro PDF válido.",
+          true
+        );
+        return;
+      }
+
+      if (
+        ficheiro.size <= 0 ||
+        ficheiro.size > MAX_PDF_BYTES
+      ) {
+        mostrarEstado(
+          "O PDF deve ter no máximo 25 MB.",
+          true
+        );
+        return;
+      }
+    }
+
+    emCurso = true;
+    alterarEstadoBotao(true);
+
+    try {
+      const dadosFormulario = new FormData(formulario);
+
+      // Nunca enviar os bytes do PDF para a Vercel.
+      dadosFormulario.delete("pdf");
+      dadosFormulario.delete("caminho_upload");
+
+      if (ficheiro) {
+        mostrarEstado(
+          "A verificar autorização para carregar o PDF..."
+        );
+
+        const respostaPreparacao = await fetch(
+          "/admin/documentacao/preparar-upload",
+          {
+            method: "POST",
+            credentials: "same-origin",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              nome: ficheiro.name,
+              tamanho: ficheiro.size,
+              tipo: ficheiro.type,
+            }),
+          }
+        );
+
+        if (!respostaPreparacao.ok) {
+          throw new Error(
+            await lerErro(respostaPreparacao)
+          );
+        }
+
+        const autorizacao =
+          await respostaPreparacao.json();
+
+        if (
+          typeof autorizacao.caminho !== "string" ||
+          typeof autorizacao.token !== "string" ||
+          !autorizacao.caminho ||
+          !autorizacao.token
+        ) {
+          throw new Error(
+            "A autorização de carregamento é inválida."
+          );
+        }
+
+        const urlSupabase =
+          import.meta.env.PUBLIC_SUPABASE_URL;
+
+        const chavePublica =
+          import.meta.env.PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+
+        if (!urlSupabase || !chavePublica) {
+          throw new Error(
+            "A configuração pública do Supabase está incompleta."
+          );
+        }
+
+        const supabase = createClient(
+          urlSupabase,
+          chavePublica,
+          {
+            auth: {
+              persistSession: false,
+              autoRefreshToken: false,
+              detectSessionInUrl: false,
+            },
+          }
+        );
+
+        mostrarEstado(
+          "A enviar PDF diretamente para o armazenamento privado..."
+        );
+
+        const { error: erroUpload } =
+          await supabase.storage
+            .from("documentacao-privada")
+            .uploadToSignedUrl(
+              autorizacao.caminho,
+              autorizacao.token,
+              ficheiro,
+              {
+                contentType: "application/pdf",
+                upsert: false,
+              }
+            );
+
+        if (erroUpload) {
+          console.error(
+            "Falha no carregamento direto:",
+            erroUpload.message
+          );
+
+          throw new Error(
+            "Não foi possível carregar o PDF. Verifica o limite do armazenamento e tenta novamente."
+          );
+        }
+
+        // Enviar apenas a referência ao ficheiro,
+        // nunca o seu conteúdo.
+        dadosFormulario.append(
+          "caminho_upload",
+          autorizacao.caminho
+        );
+      }
+
+      mostrarEstado(
+        "A validar e guardar o documento como rascunho..."
+      );
+
+      const respostaCriacao = await fetch(
+        formulario.action,
+        {
+          method: "POST",
+          credentials: "same-origin",
+          body: dadosFormulario,
+          redirect: "follow",
+        }
+      );
+
+      if (!respostaCriacao.ok) {
+        throw new Error(
+          await lerErro(respostaCriacao)
+        );
+      }
+
+      const destino = new URL(
+        respostaCriacao.url,
+        window.location.origin
+      );
+
+      if (
+        destino.origin !== window.location.origin ||
+        destino.pathname !== "/admin/documentacao/"
+      ) {
+        throw new Error(
+          "Não foi possível confirmar a gravação do documento."
+        );
+      }
+
+      mostrarEstado(
+        "Documento guardado. A abrir a gestão de documentação..."
+      );
+
+      window.location.assign(destino.href);
+    } catch (erro) {
+      const mensagem =
+        erro instanceof Error
+          ? erro.message
+          : "Ocorreu um erro inesperado.";
+
+      mostrarEstado(mensagem, true);
+      alterarEstadoBotao(false);
+      emCurso = false;
+    }
+  });
+</script>
 
 <style>
   body {
@@ -539,6 +849,27 @@ if (erroPermissaoPublicar) {
     margin-top: 16px;
   }
 
+  .estado-carregamento {
+    margin: 0;
+    padding: 14px 18px;
+    border: 1px solid #c7dff4;
+    border-radius: 8px;
+    background: #eef6ff;
+    color: #16365c;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  .estado-carregamento[hidden] {
+    display: none;
+  }
+
+  .estado-carregamento.erro {
+    border-color: #fecaca;
+    background: #fff1f2;
+    color: #991b1b;
+  }
+
   .acoes {
     display: flex;
     justify-content: flex-end;
@@ -563,6 +894,11 @@ if (erroPermissaoPublicar) {
 
   .guardar:hover {
     background: #234e7d;
+  }
+
+  .guardar:disabled {
+    opacity: 0.65;
+    cursor: wait;
   }
 
   @media (max-width: 650px) {
